@@ -60,7 +60,7 @@ function updateLNAV() {
 	else LNAVTimer = setInterval(updateLNAV, 30000);
 }
 
-var VNAVTimer;
+var VNAVTimer = setInterval(updateVNAV, 5000);
 function updateVNAV() {
     var aircraft = ges.aircraft.name;
     var ground = ges.groundElevation * metersToFeet;
