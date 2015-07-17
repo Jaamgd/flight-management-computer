@@ -215,7 +215,7 @@ function getFlightParameters(aircraft) {
     var spd, vs;
     var gndElev = ges.groundElevation * metersToFeet;
     var a = ges.aircraft.animationValue.altitude;
-    
+
     // CLIMB
     if (phase == "climb") {
         if (a > 1500 + gndElev && a <= 4000 + gndElev) {
@@ -225,14 +225,17 @@ function getFlightParameters(aircraft) {
             case "161":
             case "concorde":
             case "164":
+            case "187":
             case "162":
             case "183":
             case "167":
+            case "156":
             case "166":
                 spd = 210;
                 vs = 3000;
                 break;
-            default: break;
+            default:
+                break;
             }
         } else if (a > 4000 + gndElev && a <= 10000 + gndElev) {
             switch (aircraft) {
@@ -241,14 +244,17 @@ function getFlightParameters(aircraft) {
             case "161":
             case "concorde":
             case "164":
+            case "187":
             case "162":
             case "183":
             case "167":
+            case "156":
             case "166":
                 spd = 245;
                 vs = 2500;
                 break;
-            default: break;
+            default:
+                break;
             }
         } else if (a > 10000 + gndElev && a <= 18000) {
             switch (aircraft) {
@@ -257,8 +263,10 @@ function getFlightParameters(aircraft) {
             case "161":
             case "concorde":
             case "164":
+            case "187":
             case "183":
             case "167":
+            case "156":
                 spd = 295;
                 vs = 2200;
                 break;
@@ -267,7 +275,8 @@ function getFlightParameters(aircraft) {
                 spd = 290;
                 vs = 2200;
                 break;
-            default: break;
+            default:
+                break;
             }
         } else if (a > 18000 && a <= 24000) {
             switch (aircraft) {
@@ -276,11 +285,13 @@ function getFlightParameters(aircraft) {
             case "concorde":
             case "183":
             case "167":
+            case "156":
                 spd = 310;
                 vs = 1800;
                 break;
             case "md11":
             case "164":
+            case "187":
                 spd = 300;
                 vs = 1800;
                 break;
@@ -289,28 +300,33 @@ function getFlightParameters(aircraft) {
                 spd = 295;
                 vs = 1800;
                 break;
-            default: break;
+            default:
+                break;
             }
         } else if (a > 24000 && a <= 26000) {
             switch (aircraft) {
             case "a380":
             case "161":
             case "167":
+            case "156":
                 vs = 1500;
                 break;
-            default: break;
+            default:
+                break;
             }
         } else if (a > 26000 && a <= 28000) {
             switch (aircraft) {
             case "md11":
             case "164":
+            case "187":
             case "162":
             case "166":
             case "183":
                 spd = 290;
                 vs = 1500;
                 break;
-            default: break;
+            default:
+                break;
             }
         } else if (a > 29500) {
             $("#Qantas94Heavy-ap-spd span:last-child").click();
@@ -322,16 +338,19 @@ function getFlightParameters(aircraft) {
             case "a380":
             case "161":
             case "167":
+            case "156":
                 spd = 0.82;
                 break;
             case "164":
+            case "187":
                 spd = 0.78;
                 vs = 1200;
                 break;
             case "183":
                 spd = 0.80;
                 break;
-            default: break;
+            default:
+                break;
             }
         }
         if (a > cruise - 100 && cruise > 18000) {
@@ -345,10 +364,12 @@ function getFlightParameters(aircraft) {
                 break;
             case "a380":
             case "167":
+            case "156":
                 spd = 0.85;
                 break;
             case "md11":
             case "164":
+            case "187":
                 spd = 0.80;
                 break;
             case "183":
@@ -357,11 +378,12 @@ function getFlightParameters(aircraft) {
             case "concorde":
                 spd = 2;
                 break;
-            default: break;
+            default:
+                break;
             }
         }
     }
-    
+
     // DESCENT
     else if (phase == "descent") {
         if (a > cruise - 700) {
@@ -373,7 +395,8 @@ function getFlightParameters(aircraft) {
                     spd = 1.5;
                     vs = -2000;
                     break;
-                default: break;
+                default:
+                    break;
                 }
             } else if (a > 30000 && a <= 45000) {
                 switch (aircraft) {
@@ -383,6 +406,7 @@ function getFlightParameters(aircraft) {
                 case "a380":
                 case "161":
                 case "167":
+                case "156":
                     spd = 0.83;
                     vs = -2400;
                     break;
@@ -392,12 +416,14 @@ function getFlightParameters(aircraft) {
                     break;
                 case "md11":
                 case "164":
+                case "187":
                 case "162":
                 case "166":
                     spd = 0.77;
                     vs = -2300;
                     break;
-                default: break;
+                default:
+                    break;
                 }
             } else if (a > 18000 && a <= 30000) {
                 $("#Qantas94Heavy-ap-spd span:last-child").click();
@@ -411,8 +437,10 @@ function getFlightParameters(aircraft) {
                 case "161":
                 case "a380":
                 case "164":
+                case "187":
                 case "183":
                 case "167":
+                case "156":
                     spd = 310;
                     vs = -2200;
                     break;
@@ -420,7 +448,8 @@ function getFlightParameters(aircraft) {
                     spd = 330;
                     vs = -2400;
                     break;
-                default: break;
+                default:
+                    break;
                 }
             } else if (a > 12000 + gndElev && a <= 18000) {
                 switch (aircraft) {
@@ -428,15 +457,18 @@ function getFlightParameters(aircraft) {
                 case "a380":
                 case "161":
                 case "164":
+                case "187":
                 case "concorde":
                 case "162":
                 case "183":
                 case "166":
                 case "167":
+                case "156":
                     spd = 280;
                     vs = -1800;
                     break;
-                default: break;
+                default:
+                    break;
                 }
             }
         }
@@ -1414,4 +1446,3 @@ Array.prototype.move = function (index1, index2) {
     this.splice(index2, 0, this.splice(index1, 1)[0]);
     return this;
 };
-
