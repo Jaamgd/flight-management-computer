@@ -8,6 +8,12 @@
 // @version 0.4.0.1505
 // @grant none
 // ==/UserScript==
+// test for Karl to see
+function stopPropagation (event) {
+	event.stopPropagation();
+}
+
+$('#fmcModal input').keydown(stopPropagation).keyup(stopPropagation);
 
 var tod;
 var VNAV = false;
