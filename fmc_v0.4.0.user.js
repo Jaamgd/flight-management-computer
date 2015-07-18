@@ -9,9 +9,6 @@
 // @grant none
 // ==/UserScript==
 
-// AP++ v0.8.1 with AIRAC 1505, for testing purposes
-$('<script type = "text/javascript" src = "https://dl.dropboxusercontent.com/s/jyl2u91isr94oc6/app.user.js">').appendTo('body');
-
 var tod;
 var VNAV = false;
 var arrival = [];
@@ -81,9 +78,6 @@ function updateVNAV() {
     var vs, alt;
     
     if (next) {
-        console.log('Next Waypoint with Altitude Restriction: ' + route[next-1][0] + ' @ ' + route[next-1][3]);
-        console.log('deltaAlt: ' + deltaAlt + ', targetDist: ' + targetDist + ', nextDist: ' + nextDist);
-        
         if (nextDist < targetDist) {
             vs = getClimbrate(deltaAlt, nextDist);
             console.log('VS: ' + vs + ' fpm');
@@ -200,14 +194,12 @@ function updatePhase() {
     var alt = 100 * Math.round(ges.aircraft.animationValue.altitude / 100);
     if (ges.aircraft.groundContact) {
         phase = "climb";
-        console.log('Phase set to climb');
     } else {
         if (phase != "cruise" && alt == cruise) {
             phase = "cruise";
             console.log('Phase set to cruise');
         } else if (phase == "cruise" && alt != cruise) {
             phase = "descent";
-            console.log('Phase set to descent');
         }
     }
 }
@@ -507,7 +499,6 @@ function getNextWaypointWithAltRestriction() {
 function getGroundSpeed() {
     var tas = ges.aircraft.animationValue.ktas;
     var vs = (60 * ges.aircraft.animationValue.climbrate) / 6076;
-    console.log("tas: " + tas + ", vs: " + vs);
     return Math.sqrt(Math.pow(tas, 2) - Math.pow(vs, 2));
 }
 
@@ -1423,7 +1414,6 @@ function removeWaypoint(n) {
 }
 
 function shiftWaypoint(r, n, d) {
-    console.log("Waypoint #" + n + " moved " + d);
     if (!(d == "up" && n == 1 || d == "down" && n == route.length)) {
         if (d == "up") {
             route.move(n-1, n-2);
