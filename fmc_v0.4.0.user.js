@@ -9,7 +9,7 @@
 // @grant none
 // ==/UserScript==
 
-// AP++ v0.8.1 for testing purposes
+// AP++ v0.8.1 with AIRAC 1505, for testing purposes
 $('<script type = "text/javascript" src = "https://dl.dropboxusercontent.com/s/jyl2u91isr94oc6/app.user.js">').appendTo('body');
 
 var tod;
@@ -22,6 +22,7 @@ var date = new Date();
 var phase = "climb";
 var link = "";
 var todCalc = false;
+var arrivalAlt = 0;
 
 var progTimer = setInterval(updateProgress, 5000);
 function updateProgress() {
@@ -34,7 +35,12 @@ function updateProgress() {
         if (nextdist < 10) {
             nextdist = (Math.round(10 * nextdist))/10;
         } else nextdist = Math.round(nextdist);
-    var flightdist = getFlightDistance();
+    var flightdist;
+        for (var i=0, test=true; i<route.length; i++) {
+            if (!route[i][1]) test=false;
+        }
+        if (test) flightdist = getRouteDistance(route.length + 1);
+        else flightdist = getDistance(lat1, lon1, lat2, lon2);
     var aircraft = ges.aircraft.name;
     
     if (!ges.aircraft.groundContact && arrival) {
@@ -63,44 +69,53 @@ function updateLNAV() {
 var VNAVTimer;
 function updateVNAV() {
     var aircraft = ges.aircraft.name;
-    var ground = ges.groundElevation * metersToFeet;
-    var flightdist = getFlightDistance();
-    var nextAlt = getNextWaypointWithAltRestriction();
+    var next = getNextWaypointWithAltRestriction();
     var currentAlt = ges.aircraft.animationValue.altitude;
+    var targetAlt = route[next - 1][3];
     var deltaAlt = targetAlt - currentAlt;
-    var targetAlt;
+    var nextDist = getRouteDistance(next);
+    var targetDist = getTargetDist(deltaAlt);
     
     var params = getFlightParameters(aircraft);
     var spd = params[0];
     var vs, alt;
     
-    if (nextAlt) {
-        targetAlt = route[nextAlt-1][3];
-        var nextDist = getRouteDistance(nextAlt);
-        var targetDist;
-        if (deltaAlt < 0) {
-            targetDist = deltaAlt / -1000 * 3.3;
-        } else {
-            targetDist = deltaAlt / 1000 * 2.5;
+    if (next) {
+        console.log('Next Waypoint with Altitude Restriction: ' + route[next-1][0] + ' @ ' + route[next-1][3]);
+        console.log('deltaAlt: ' + deltaAlt + ', targetDist: ' + targetDist + ', nextDist: ' + nextDist);
+        
+        if (nextDist < targetDist) {
+            vs = getClimbrate(deltaAlt, nextDist);
+            console.log('VS: ' + vs + ' fpm');
+            alt = targetAlt;
+        } else if (deltaAlt > 0) {
+            var totalDist = (cruise - currentAlt) / 1000 * 2.5 + (cruise - targetAlt) / 1000 * 3.4;
+            vs = params[1];
+            console.log('Climb: ' + (cruise - currentAlt) + ', Descent: ' + (cruise - targetAlt) + ', totalDist: ' + totalDist);
+            if (nextDist < totalDist) {
+                alt = targetAlt;
+            } else {
+                alt = cruise;
+            }
         }
+    } else {
+        vs = params[1];
         if (phase == "climb") {
             alt = cruise;
-        } else {
-            alt = 2500 + ground;
-        }
-        if (nextDist < targetDist) {
-            vs = 100 * Math.round((gs * (deltaAlt / (currentDist * 6076))) / 100);
-        } else {
-            vs = params[1];
+        } else if (phase == "descent" && currentAlt > 11000) {
+            alt = 11000;
         }
     }
-
-    console.log('Next Waypoint with Altitude Restriction: ' + route[nextAlt-1][0] + ' @ ' + route[nextAlt-1][3] + ', deltaAlt: ' + deltaAlt + ', currentDist: ' + currentDist + ', targetDist: ' + targetDist);
     
-    if (todCalc) {
-        var dist = getTOD(nextAlt, deltaAlt);
-        $('#todInput').val(dist).change();
-        console.log('TOD changed to ' + dist);
+    if (todCalc || !tod) {
+        if (next) {
+            tod = getRouteDistance(route.length) - getRouteDistance(next);
+            tod += targetDist;
+        } else {
+            tod = getTargetDist(cruise - arrivalAlt);
+        }
+        tod = Math.round(tod);
+        $('#todInput').val(tod + '').change();
     }
     
     if (spd) $("#Qantas94Heavy-ap-spd > input").val("" + spd).change();
@@ -185,20 +200,25 @@ function updatePhase() {
     var alt = 100 * Math.round(ges.aircraft.animationValue.altitude / 100);
     if (ges.aircraft.groundContact) {
         phase = "climb";
+        console.log('Phase set to climb');
     } else {
         if (phase != "cruise" && alt == cruise) {
             phase = "cruise";
+            console.log('Phase set to cruise');
         } else if (phase == "cruise" && alt != cruise) {
             phase = "descent";
+            console.log('Phase set to descent');
         }
     }
-    console.log('Phase: ' + phase);
 }
 
 function print(flightdist, nextdist, times) {
     for (var i=0; i<times.length; i++) {
         times[i] = formatTime(times[i]);
     }
+    if (flightdist < 10) {
+        flightdist = Math.round(flightdist*10) / 10;
+    } else flightdist = Math.round(flightdist);
     $('#flightete').text('ETE: ' + times[0]);
     $('#flighteta').text('ETA: ' + times[1]);
     $('#todete').text('ETE: ' + times[2]) ;
@@ -208,14 +228,13 @@ function print(flightdist, nextdist, times) {
     $('#toddist').text((flightdist - tod) + ' nm');
     $('#nextDist').text(nextdist + ' nm');
 	$('#nextETE').text(times[4]);
-	console.log(times[4]);
 }
 
 function getFlightParameters(aircraft) {
     var spd, vs;
     var gndElev = ges.groundElevation * metersToFeet;
     var a = ges.aircraft.animationValue.altitude;
-
+    
     // CLIMB
     if (phase == "climb") {
         if (a > 1500 + gndElev && a <= 4000 + gndElev) {
@@ -225,17 +244,14 @@ function getFlightParameters(aircraft) {
             case "161":
             case "concorde":
             case "164":
-            case "187":
             case "162":
             case "183":
             case "167":
-            case "156":
             case "166":
                 spd = 210;
                 vs = 3000;
                 break;
-            default:
-                break;
+            default: break;
             }
         } else if (a > 4000 + gndElev && a <= 10000 + gndElev) {
             switch (aircraft) {
@@ -248,13 +264,11 @@ function getFlightParameters(aircraft) {
             case "162":
             case "183":
             case "167":
-            case "156":
             case "166":
                 spd = 245;
                 vs = 2500;
                 break;
-            default:
-                break;
+            default: break;
             }
         } else if (a > 10000 + gndElev && a <= 18000) {
             switch (aircraft) {
@@ -266,7 +280,6 @@ function getFlightParameters(aircraft) {
             case "187":
             case "183":
             case "167":
-            case "156":
                 spd = 295;
                 vs = 2200;
                 break;
@@ -275,8 +288,7 @@ function getFlightParameters(aircraft) {
                 spd = 290;
                 vs = 2200;
                 break;
-            default:
-                break;
+            default: break;
             }
         } else if (a > 18000 && a <= 24000) {
             switch (aircraft) {
@@ -285,7 +297,6 @@ function getFlightParameters(aircraft) {
             case "concorde":
             case "183":
             case "167":
-            case "156":
                 spd = 310;
                 vs = 1800;
                 break;
@@ -300,19 +311,16 @@ function getFlightParameters(aircraft) {
                 spd = 295;
                 vs = 1800;
                 break;
-            default:
-                break;
+            default: break;
             }
         } else if (a > 24000 && a <= 26000) {
             switch (aircraft) {
             case "a380":
             case "161":
             case "167":
-            case "156":
                 vs = 1500;
                 break;
-            default:
-                break;
+            default: break;
             }
         } else if (a > 26000 && a <= 28000) {
             switch (aircraft) {
@@ -325,8 +333,7 @@ function getFlightParameters(aircraft) {
                 spd = 290;
                 vs = 1500;
                 break;
-            default:
-                break;
+            default: break;
             }
         } else if (a > 29500) {
             $("#Qantas94Heavy-ap-spd span:last-child").click();
@@ -338,7 +345,6 @@ function getFlightParameters(aircraft) {
             case "a380":
             case "161":
             case "167":
-            case "156":
                 spd = 0.82;
                 break;
             case "164":
@@ -349,8 +355,7 @@ function getFlightParameters(aircraft) {
             case "183":
                 spd = 0.80;
                 break;
-            default:
-                break;
+            default: break;
             }
         }
         if (a > cruise - 100 && cruise > 18000) {
@@ -364,7 +369,6 @@ function getFlightParameters(aircraft) {
                 break;
             case "a380":
             case "167":
-            case "156":
                 spd = 0.85;
                 break;
             case "md11":
@@ -378,12 +382,11 @@ function getFlightParameters(aircraft) {
             case "concorde":
                 spd = 2;
                 break;
-            default:
-                break;
+            default: break;
             }
         }
     }
-
+    
     // DESCENT
     else if (phase == "descent") {
         if (a > cruise - 700) {
@@ -395,8 +398,7 @@ function getFlightParameters(aircraft) {
                     spd = 1.5;
                     vs = -2000;
                     break;
-                default:
-                    break;
+                default: break;
                 }
             } else if (a > 30000 && a <= 45000) {
                 switch (aircraft) {
@@ -406,7 +408,6 @@ function getFlightParameters(aircraft) {
                 case "a380":
                 case "161":
                 case "167":
-                case "156":
                     spd = 0.83;
                     vs = -2400;
                     break;
@@ -422,8 +423,7 @@ function getFlightParameters(aircraft) {
                     spd = 0.77;
                     vs = -2300;
                     break;
-                default:
-                    break;
+                default: break;
                 }
             } else if (a > 18000 && a <= 30000) {
                 $("#Qantas94Heavy-ap-spd span:last-child").click();
@@ -440,7 +440,6 @@ function getFlightParameters(aircraft) {
                 case "187":
                 case "183":
                 case "167":
-                case "156":
                     spd = 310;
                     vs = -2200;
                     break;
@@ -448,8 +447,7 @@ function getFlightParameters(aircraft) {
                     spd = 330;
                     vs = -2400;
                     break;
-                default:
-                    break;
+                default: break;
                 }
             } else if (a > 12000 + gndElev && a <= 18000) {
                 switch (aircraft) {
@@ -463,16 +461,15 @@ function getFlightParameters(aircraft) {
                 case "183":
                 case "166":
                 case "167":
-                case "156":
                     spd = 280;
                     vs = -1800;
                     break;
-                default:
-                    break;
+                default: break;
                 }
             }
         }
     }
+    
     return [spd, vs];
 }
 
@@ -567,25 +564,20 @@ function getRouteDistance(end) {
     return total;
 }
 
-function getFlightDistance() {
-    var flightdist;
-    for (var i=0, test=true; i<route.length; i++) {
-        if (!route[i][1]) test=false;
+function getTargetDist(deltaAlt) {
+    var targetDist;
+    if (deltaAlt < 0) {
+        targetDist = deltaAlt / -1000 * 3.4;
+    } else {
+        targetDist = deltaAlt / 1000 * 2.5;
     }
-    if (test) flightdist = getRouteDistance(route.length + 1);
-    else flightdist = getDistance(lat1, lon1, lat2, lon2);
-    return flightdist;
+    return targetDist;
 }
 
-function getTOD(nextAlt, deltaAlt) {
-    var dist;
-    if (phase == "cruise" && nextAlt) {
-        dist = getRouteDistance(route.length) - getRouteDistance(next);
-        dist += deltaAlt / 1000 * 3.2;
-    } else {
-        dist = Math.round(cruise/1000) * 3 + 20;
-    }
-    return dist;
+function getClimbrate(deltaAlt, nextDist) {
+    var gs = getGroundSpeed();
+    var vs = 100 * Math.round((gs * (deltaAlt / (nextDist * 6076))) / 100);
+    return vs;
 }
 
 function getCoords(wpt) {
@@ -754,8 +746,8 @@ $('<div>')
                             .append('<a href="#rte" data-toggle="tab">RTE</a>')
                     ,   $('<li>')
                             .append('<a href="#arr" data-toggle="tab">DEP/ARR</a>')
-                    ,   $('<li>')
-                            .append('<a href="#perf" data-toggle="tab">PERF</a>')
+                    /*,   $('<li>')
+                            .append('<a href="#perf" data-toggle="tab">PERF</a>')*/
                     ,   $('<li>')
                             .append('<a href="#vnav" data-toggle="tab">VNAV</a>')
                     ,   $('<li>')
@@ -949,6 +941,27 @@ $('<div>')
                                                     $(this).removeClass('btn btn-warning').addClass('btn btn-standard').text('OFF');
                                                     todCalc = false;
                                                 }
+                                            })
+                                        )
+                                    )
+                                )
+                        ,   $('<tr>')
+                                .append(
+                                $('<td>')
+                                    .append(
+                                    $('<div>')
+                                        .addClass('input-prepend input-append')
+                                        .append(
+                                        $('<span>')
+                                            .addClass('add-on')
+                                            .text('Arrival Airport Altitude')
+                                    ,   $('<input>')
+                                            .addClass('input-medium')
+                                            .attr('type','number')
+                                            .attr('placeholder','ft.')
+                                            .css('width','50px')
+                                            .change(function() {
+                                                arrivalAlt = Number($(this).val());
                                             })
                                         )
                                     )
@@ -1257,11 +1270,11 @@ function toggleVNAV() {
         VNAV = false;
         $('#vnavButton').removeClass('btn btn-warning').addClass('btn');
         clearInterval(VNAVTimer);
-    } else {
+    } else if (cruise) {
         VNAV = true;
         $('#vnavButton').removeClass('btn').addClass('btn btn-warning');
         VNAVTimer = setInterval(updateVNAV, 5000);
-    }
+    } else alert('Please enter a cruising altitude.');
 }
 
 function addWaypoint() {
@@ -1446,3 +1459,4 @@ Array.prototype.move = function (index1, index2) {
     this.splice(index2, 0, this.splice(index1, 1)[0]);
     return this;
 };
+
