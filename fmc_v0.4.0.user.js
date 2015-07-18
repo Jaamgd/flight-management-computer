@@ -71,7 +71,7 @@ function updateVNAV() {
     var aircraft = ges.aircraft.name;
     var next = getNextWaypointWithAltRestriction();
     var currentAlt = ges.aircraft.animationValue.altitude;
-    var targetAlt = route[next - 1][3];
+    var targetAlt = route[next - 1][3] || 0;
     var deltaAlt = targetAlt - currentAlt;
     var nextDist = getRouteDistance(next);
     var targetDist = getTargetDist(deltaAlt);
@@ -109,7 +109,7 @@ function updateVNAV() {
     
     if (todCalc || !tod) {
         if (next) {
-            tod = getRouteDistance(route.length) - getRouteDistance(next);
+            tod = getRouteDistance(route.length) - nextDist;
             tod += targetDist;
         } else {
             tod = getTargetDist(cruise - arrivalAlt);
@@ -576,7 +576,7 @@ function getTargetDist(deltaAlt) {
 
 function getClimbrate(deltaAlt, nextDist) {
     var gs = getGroundSpeed();
-    var vs = 100 * Math.round((gs * (deltaAlt / (nextDist * 6076))) / 100);
+    var vs = 100 * Math.round((gs * (deltaAlt / (nextDist * 6076)) * 6076 / 60) / 100);
     return vs;
 }
 
