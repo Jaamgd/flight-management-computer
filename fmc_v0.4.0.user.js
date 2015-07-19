@@ -1461,8 +1461,13 @@ Array.prototype.move = function (index1, index2) {
 };
 
 // Fixes the "T" keyup bug
+/*
 var oldOpen = ui.openChat;
 
 ui.openChat = function () {
 	if (!$('#fmcModal').is(':visible')) oldOpen();
 }
+*/
+$('#fmcModal').keyup(function (event) {
+  event.stopImmediatePropagation();
+});
