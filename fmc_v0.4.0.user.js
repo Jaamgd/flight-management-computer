@@ -607,7 +607,7 @@ function getTurnDistance(angle) {
 	return r * Math.tan(a/2) + 0.20;
 }
 
-function getDistance(lat1, lon1, lat2, lon2) {
+window.getDistance = function (lat1, lon1, lat2, lon2) {
     var dlat = (lat2-lat1)*Math.PI/180;
     var dlon = (lon2-lon1)*Math.PI/180;
     lat1 = lat1*Math.PI/180;
@@ -617,7 +617,7 @@ function getDistance(lat1, lon1, lat2, lon2) {
     return 3440.06 * c;
 }
 
-function getBearing(lat1, lon1, lat2, lon2) {
+window.getBearing = function (lat1, lon1, lat2, lon2) {
     lat1 = lat1*Math.PI/180;
     lat2 = lat2*Math.PI/180;
     lon1 = lon1*Math.PI/180;
@@ -628,7 +628,8 @@ function getBearing(lat1, lon1, lat2, lon2) {
 	return brng;
 }
 
-function toRoute() {
+// This shouldn't be a window function, but problems may occur depending on browser version
+window.toRoute = function() {
     if (link.indexOf('skyvector.com') != -1) {
         var departure = $('#wptDeparture')[0].checked;
         var arrival = $('#wptArrival')[0].checked;
