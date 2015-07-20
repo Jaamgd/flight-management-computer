@@ -71,7 +71,12 @@ function updateVNAV() {
     var aircraft = ges.aircraft.name;
     var next = getNextWaypointWithAltRestriction();
     var currentAlt = ges.aircraft.animationValue.altitude;
-    var targetAlt = route[next - 1][3] || 0;
+    var targetAlt;
+	try { 
+		targetAlt = route[next - 1][3];
+	} catch (e) {
+		targetAlt = currentAlt;
+	}
     var deltaAlt = targetAlt - currentAlt;
     var nextDist = getRouteDistance(next);
     var targetDist = getTargetDist(deltaAlt);
@@ -188,11 +193,12 @@ function checkGear() {
 var speedTimer = setInterval(checkSpeed, 15000);
 function checkSpeed() {
     var kcas = ges.aircraft.animationValue.kcas;
-    if (kcas > 255) {
+	var altitude = ges.aircraft.animationValue.altitude;
+    if (kcas > 255 && altitude < 10000) {
         updateLog('Overspeed');
     }
     clearInterval(speedTimer);
-    if (ges.aircraft.animationValue.altitude < 10000) speedTimer = setInterval(checkSpeed, 15000);
+    if (altitude < 10000) speedTimer = setInterval(checkSpeed, 15000);
     else speedTimer = setInterval(checkSpeed, 30000);
 }
 
@@ -234,10 +240,12 @@ function getFlightParameters(aircraft) {
     var spd, vs;
     var gndElev = ges.groundElevation * metersToFeet;
     var a = ges.aircraft.animationValue.altitude;
+	var isMach = $('#Qantas94Heavy-ap-spd span:last-child').text().trim() === 'M.';
     
     // CLIMB
     if (phase == "climb") {
         if (a > 1500 + gndElev && a <= 4000 + gndElev) {
+			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
             switch (aircraft) {
             case "md11":
             case "a380":
@@ -254,6 +262,7 @@ function getFlightParameters(aircraft) {
             default: break;
             }
         } else if (a > 4000 + gndElev && a <= 10000 + gndElev) {
+			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
             switch (aircraft) {
             case "md11":
             case "a380":
@@ -271,6 +280,7 @@ function getFlightParameters(aircraft) {
             default: break;
             }
         } else if (a > 10000 + gndElev && a <= 18000) {
+			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
             switch (aircraft) {
             case "md11":
             case "a380":
@@ -291,6 +301,7 @@ function getFlightParameters(aircraft) {
             default: break;
             }
         } else if (a > 18000 && a <= 24000) {
+			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
             switch (aircraft) {
             case "a380":
             case "161":
@@ -314,6 +325,7 @@ function getFlightParameters(aircraft) {
             default: break;
             }
         } else if (a > 24000 && a <= 26000) {
+			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
             switch (aircraft) {
             case "a380":
             case "161":
@@ -323,6 +335,7 @@ function getFlightParameters(aircraft) {
             default: break;
             }
         } else if (a > 26000 && a <= 28000) {
+			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
             switch (aircraft) {
             case "md11":
             case "164":
@@ -330,13 +343,12 @@ function getFlightParameters(aircraft) {
             case "162":
             case "166":
             case "183":
-                spd = 290;
                 vs = 1500;
                 break;
             default: break;
             }
         } else if (a > 29500) {
-            $("#Qantas94Heavy-ap-spd span:last-child").click();
+            if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
             switch (aircraft) {
             case "162":
             case "166":
@@ -359,6 +371,7 @@ function getFlightParameters(aircraft) {
             }
         }
         if (a > cruise - 100 && cruise > 18000) {
+			if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
             switch (aircraft) {
             case "162":
             case "166":
@@ -390,9 +403,11 @@ function getFlightParameters(aircraft) {
     // DESCENT
     else if (phase == "descent") {
         if (a > cruise - 700) {
+			if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
             vs = -1000;
         } else {
             if (a > 45000) {
+				if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
                 switch (aircraft) {
                 case "concorde":
                     spd = 1.5;
@@ -401,6 +416,7 @@ function getFlightParameters(aircraft) {
                 default: break;
                 }
             } else if (a > 30000 && a <= 45000) {
+				if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
                 switch (aircraft) {
                 case "concorde":
                     vs = -3600;
@@ -426,7 +442,7 @@ function getFlightParameters(aircraft) {
                 default: break;
                 }
             } else if (a > 18000 && a <= 30000) {
-                $("#Qantas94Heavy-ap-spd span:last-child").click();
+                if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
                 switch (aircraft) {
                 case "162":
                 case "166":
@@ -450,6 +466,7 @@ function getFlightParameters(aircraft) {
                 default: break;
                 }
             } else if (a > 12000 + gndElev && a <= 18000) {
+				if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
                 switch (aircraft) {
                 case "md11":
                 case "a380":
