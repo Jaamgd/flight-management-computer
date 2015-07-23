@@ -25,6 +25,7 @@ var todCalc = false;
 var arrivalAlt = 0;
 
 var progTimer = setInterval(updateProgress, 5000);
+
 function updateProgress() {
     var lat1 = ges.aircraft.llaLocation[0] || 0;
     var lon1 = ges.aircraft.llaLocation[1] || 0;
@@ -32,17 +33,17 @@ function updateProgress() {
     var lon2 = arrival[2] || 0;
     var times = ["--", "--", "--", "--", "--"]; // flightete, flighteta, todete, todeta, nextete
     var nextdist = getRouteDistance(nextWaypoint);
-        if (nextdist < 10) {
-            nextdist = (Math.round(10 * nextdist))/10;
-        } else nextdist = Math.round(nextdist);
+    if (nextdist < 10) {
+        nextdist = (Math.round(10 * nextdist)) / 10;
+    } else nextdist = Math.round(nextdist);
     var flightdist;
-        for (var i=0, test=true; i<route.length; i++) {
-            if (!route[i][1]) test=false;
-        }
-        if (test) flightdist = getRouteDistance(route.length + 1);
-        else flightdist = getDistance(lat1, lon1, lat2, lon2);
+    for (var i = 0, test = true; i < route.length; i++) {
+        if (!route[i][1]) test = false;
+    }
+    if (test) flightdist = getRouteDistance(route.length + 1);
+    else flightdist = getDistance(lat1, lon1, lat2, lon2);
     var aircraft = ges.aircraft.name;
-    
+
     if (!ges.aircraft.groundContact && arrival) {
         times[0] = getete(flightdist, true);
         times[1] = geteta(times[0][0], times[0][1]);
@@ -56,39 +57,41 @@ function updateProgress() {
 }
 
 var LNAVTimer = setInterval(updateLNAV, 5000);
+
 function updateLNAV() {
     var d = getRouteDistance(nextWaypoint);
     if (d <= getTurnDistance(60)) {
-        activateLeg(nextWaypoint+1);
+        activateLeg(nextWaypoint + 1);
     }
-	clearInterval(LNAVTimer);
-	if (d < ges.aircraft.animationValue.kias/60) LNAVTimer = setInterval(updateLNAV, 500);
-	else LNAVTimer = setInterval(updateLNAV, 30000);
+    clearInterval(LNAVTimer);
+    if (d < ges.aircraft.animationValue.kias / 60) LNAVTimer = setInterval(updateLNAV, 500);
+    else LNAVTimer = setInterval(updateLNAV, 30000);
 }
 
 var VNAVTimer;
+
 function updateVNAV() {
     var aircraft = ges.aircraft.name;
     var next = getNextWaypointWithAltRestriction();
     var currentAlt = ges.aircraft.animationValue.altitude;
     var targetAlt;
-	try { 
-		targetAlt = route[next - 1][3];
-	} catch (e) {
-		targetAlt = currentAlt;
-	}
+    try {
+        targetAlt = route[next - 1][3];
+    } catch (e) {
+        targetAlt = currentAlt;
+    }
     var deltaAlt = targetAlt - currentAlt;
     var nextDist = getRouteDistance(next);
     var targetDist = getTargetDist(deltaAlt);
-    
+
     var params = getFlightParameters(aircraft);
     var spd = params[0];
     var vs, alt;
-    
+
     if (next) {
-        console.log('Next Waypoint with Altitude Restriction: ' + route[next-1][0] + ' @ ' + route[next-1][3]);
+        console.log('Next Waypoint with Altitude Restriction: ' + route[next - 1][0] + ' @ ' + route[next - 1][3]);
         console.log('deltaAlt: ' + deltaAlt + ', targetDist: ' + targetDist + ', nextDist: ' + nextDist);
-        
+
         if (nextDist < targetDist) {
             vs = getClimbrate(deltaAlt, nextDist);
             console.log('VS: ' + vs + ' fpm');
@@ -111,7 +114,7 @@ function updateVNAV() {
             alt = 11000;
         }
     }
-    
+
     if (todCalc || !tod) {
         if (next) {
             tod = getRouteDistance(route.length) - nextDist;
@@ -122,23 +125,24 @@ function updateVNAV() {
         tod = Math.round(tod);
         $('#todInput').val(tod + '').change();
     }
-    
+
     if (spd) $("#Qantas94Heavy-ap-spd > input").val("" + spd).change();
     if (vs) $("#Qantas94Heavy-ap-vs > input").val("" + vs).change();
     if (alt) $("#Qantas94Heavy-ap-alt > input").val("" + alt).change();
-    
+
     updatePhase();
 }
 
 var logTimer = setInterval(updateLog, 120000);
+
 function updateLog(other) {
     if (!ges.pause) {
         var spd = Math.round(ges.aircraft.animationValue.ktas);
         var hdg = Math.round(ges.aircraft.animationValue.heading360);
         var alt = Math.round(ges.aircraft.animationValue.altitude);
         var fps = ges.debug.fps;
-        var lat = (Math.round(10000*ges.aircraft.llaLocation[0]))/10000;
-        var lon = (Math.round(10000*ges.aircraft.llaLocation[1]))/10000;
+        var lat = (Math.round(10000 * ges.aircraft.llaLocation[0])) / 10000;
+        var lon = (Math.round(10000 * ges.aircraft.llaLocation[1])) / 10000;
         var h = date.getUTCHours();
         var m = date.getUTCMinutes();
         var time = formatTime(timeCheck(h, m));
@@ -146,22 +150,15 @@ function updateLog(other) {
         $('<tr>')
             .addClass('data')
             .append(
-            $('<td>'+time+'</td>')
-                .css('padding','0px 10px 0px 10px')
-        ,   $('<td>'+spd+'</td>')
-                .css('padding','0px 10px 0px 10px')
-        ,   $('<td>'+hdg+'</td>')
-                .css('padding','0px 10px 0px 10px')
-        ,   $('<td>'+alt+'</td>')
-                .css('padding','0px 10px 0px 10px')
-        ,   $('<td>'+lat+'</td>')
-                .css('padding','0px 10px 0px 10px')
-        ,   $('<td>'+lon+'</td>')
-                .css('padding','0px 10px 0px 10px')
-        ,   $('<td>'+fps+'</td>')
-                .css('padding','0px 10px 0px 10px')
-        ,   $('<td>'+other+'</td>')
-                .css('padding','0px 10px 0px 10px')
+                $('<td>' + time + '</td>')
+                .css('padding', '0px 10px 0px 10px'), $('<td>' + spd + '</td>')
+                .css('padding', '0px 10px 0px 10px'), $('<td>' + hdg + '</td>')
+                .css('padding', '0px 10px 0px 10px'), $('<td>' + alt + '</td>')
+                .css('padding', '0px 10px 0px 10px'), $('<td>' + lat + '</td>')
+                .css('padding', '0px 10px 0px 10px'), $('<td>' + lon + '</td>')
+                .css('padding', '0px 10px 0px 10px'), $('<td>' + fps + '</td>')
+                .css('padding', '0px 10px 0px 10px'), $('<td>' + other + '</td>')
+                .css('padding', '0px 10px 0px 10px')
             ).appendTo('#logData');
     }
     clearInterval(logTimer);
@@ -170,7 +167,9 @@ function updateLog(other) {
     } else logTimer = setInterval(updateLog, 30000);
 }
 
+// @TODO check for keydown events
 var flapsTimer = setInterval(checkFlaps, 5000);
+
 function checkFlaps() {
     var position = ges.aircraft.animationValue.flapsPosition || 0;
     var target = ges.aircraft.animationValue.flapsTarget || 0;
@@ -178,8 +177,10 @@ function checkFlaps() {
         updateLog('Flaps set to ' + target);
     }
 }
- 
+
+// @TODO check for keydown events
 var gearTimer = setInterval(checkGear, 12000);
+
 function checkGear() {
     if (ges.aircraft.animationValue.gearPosition !== ges.aircraft.animationValue.gearTarget) {
         if (ges.aircraft.animationValue.gearTarget === 1) updateLog('Gear Up');
@@ -191,9 +192,10 @@ function checkGear() {
 }
 
 var speedTimer = setInterval(checkSpeed, 15000);
+
 function checkSpeed() {
     var kcas = ges.aircraft.animationValue.kcas;
-	var altitude = ges.aircraft.animationValue.altitude;
+    var altitude = ges.aircraft.animationValue.altitude;
     if (kcas > 255 && altitude < 10000) {
         updateLog('Overspeed');
     }
@@ -219,33 +221,33 @@ function updatePhase() {
 }
 
 function print(flightdist, nextdist, times) {
-    for (var i=0; i<times.length; i++) {
+    for (var i = 0; i < times.length; i++) {
         times[i] = formatTime(times[i]);
     }
     if (flightdist < 10) {
-        flightdist = Math.round(flightdist*10) / 10;
+        flightdist = Math.round(flightdist * 10) / 10;
     } else flightdist = Math.round(flightdist);
     $('#flightete').text('ETE: ' + times[0]);
     $('#flighteta').text('ETA: ' + times[1]);
-    $('#todete').text('ETE: ' + times[2]) ;
+    $('#todete').text('ETE: ' + times[2]);
     $('#todeta').text('ETA: ' + times[3]);
     $('#flightdist').text(flightdist + ' nm');
     $('#externaldist').text(flightdist + ' nm');
     $('#toddist').text((flightdist - tod) + ' nm');
     $('#nextDist').text(nextdist + ' nm');
-	$('#nextETE').text(times[4]);
+    $('#nextETE').text(times[4]);
 }
 
 function getFlightParameters(aircraft) {
     var spd, vs;
     var gndElev = ges.groundElevation * metersToFeet;
     var a = ges.aircraft.animationValue.altitude;
-	var isMach = $('#Qantas94Heavy-ap-spd span:last-child').text().trim() === 'M.';
-    
+    var isMach = $('#Qantas94Heavy-ap-spd span:last-child').text().trim() === 'M.';
+
     // CLIMB
     if (phase == "climb") {
         if (a > 1500 + gndElev && a <= 4000 + gndElev) {
-			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+            if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
             switch (aircraft) {
             case "md11":
             case "a380":
@@ -259,10 +261,11 @@ function getFlightParameters(aircraft) {
                 spd = 210;
                 vs = 3000;
                 break;
-            default: break;
+            default:
+                break;
             }
         } else if (a > 4000 + gndElev && a <= 10000 + gndElev) {
-			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+            if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
             switch (aircraft) {
             case "md11":
             case "a380":
@@ -277,10 +280,11 @@ function getFlightParameters(aircraft) {
                 spd = 245;
                 vs = 2500;
                 break;
-            default: break;
+            default:
+                break;
             }
         } else if (a > 10000 + gndElev && a <= 18000) {
-			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+            if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
             switch (aircraft) {
             case "md11":
             case "a380":
@@ -298,10 +302,11 @@ function getFlightParameters(aircraft) {
                 spd = 290;
                 vs = 2200;
                 break;
-            default: break;
+            default:
+                break;
             }
         } else if (a > 18000 && a <= 24000) {
-			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+            if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
             switch (aircraft) {
             case "a380":
             case "161":
@@ -322,20 +327,22 @@ function getFlightParameters(aircraft) {
                 spd = 295;
                 vs = 1800;
                 break;
-            default: break;
+            default:
+                break;
             }
         } else if (a > 24000 && a <= 26000) {
-			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+            if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
             switch (aircraft) {
             case "a380":
             case "161":
             case "167":
                 vs = 1500;
                 break;
-            default: break;
+            default:
+                break;
             }
         } else if (a > 26000 && a <= 28000) {
-			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+            if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
             switch (aircraft) {
             case "md11":
             case "164":
@@ -345,7 +352,8 @@ function getFlightParameters(aircraft) {
             case "183":
                 vs = 1500;
                 break;
-            default: break;
+            default:
+                break;
             }
         } else if (a > 29500) {
             if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
@@ -367,11 +375,12 @@ function getFlightParameters(aircraft) {
             case "183":
                 spd = 0.80;
                 break;
-            default: break;
+            default:
+                break;
             }
         }
         if (a > cruise - 100 && cruise > 18000) {
-			if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+            if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
             switch (aircraft) {
             case "162":
             case "166":
@@ -395,28 +404,30 @@ function getFlightParameters(aircraft) {
             case "concorde":
                 spd = 2;
                 break;
-            default: break;
+            default:
+                break;
             }
         }
     }
-    
+
     // DESCENT
     else if (phase == "descent") {
         if (a > cruise - 700) {
-			if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+            if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
             vs = -1000;
         } else {
             if (a > 45000) {
-				if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+                if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
                 switch (aircraft) {
                 case "concorde":
                     spd = 1.5;
                     vs = -2000;
                     break;
-                default: break;
+                default:
+                    break;
                 }
             } else if (a > 30000 && a <= 45000) {
-				if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+                if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
                 switch (aircraft) {
                 case "concorde":
                     vs = -3600;
@@ -439,7 +450,8 @@ function getFlightParameters(aircraft) {
                     spd = 0.77;
                     vs = -2300;
                     break;
-                default: break;
+                default:
+                    break;
                 }
             } else if (a > 18000 && a <= 30000) {
                 if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
@@ -463,10 +475,11 @@ function getFlightParameters(aircraft) {
                     spd = 330;
                     vs = -2400;
                     break;
-                default: break;
+                default:
+                    break;
                 }
             } else if (a > 12000 + gndElev && a <= 18000) {
-				if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+                if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
                 switch (aircraft) {
                 case "md11":
                 case "a380":
@@ -481,12 +494,13 @@ function getFlightParameters(aircraft) {
                     spd = 280;
                     vs = -1800;
                     break;
-                default: break;
+                default:
+                    break;
                 }
             }
         }
     }
-    
+
     return [spd, vs];
 }
 
@@ -494,7 +508,7 @@ function activateLeg(n) {
     if (nextWaypoint != n) {
         if (n <= route.length) {
             nextWaypoint = n;
-            var wpt = route[nextWaypoint-1];
+            var wpt = route[nextWaypoint - 1];
             if (wpt[3]) {
                 $('#Qantas94Heavy-ap-icao > input').val(wpt[0]).change();
             } else {
@@ -502,7 +516,7 @@ function activateLeg(n) {
                 $('#Qantas94Heavy-ap-gc-lon > input').val(wpt[2]).change();
             }
             $('.activate').removeClass('btn-warning');
-            $('#waypoints tr:nth-child(' + (n+1) + ') .btn').addClass('btn-warning');
+            $('#waypoints tr:nth-child(' + (n + 1) + ') .btn').addClass('btn-warning');
         } else {
             $('#Qantas94Heavy-ap-icao > input').val(arrival[0]).change();
             $('.activate').removeClass('btn-warning');
@@ -516,8 +530,8 @@ function activateLeg(n) {
 }
 
 function getNextWaypointWithAltRestriction() {
-    for (var i=nextWaypoint; i<=route.length; i++) {
-        if (route[i-1][3]) return i;
+    for (var i = nextWaypoint; i <= route.length; i++) {
+        if (route[i - 1][3]) return i;
     }
 }
 
@@ -570,9 +584,9 @@ function getRouteDistance(end) {
     if (route.length === 0 || !nextWaypoint) {
         total = getDistance(loc[0], loc[1], arrival[1], arrival[2]);
     } else {
-        total = getDistance(loc[0], loc[1], route[start-1][1], route[start-1][2]);
-        for (var i=start; i<end && i<route.length; i++) {
-            total += getDistance(route[i-1][1], route[i-1][2], route[i][1], route[i][2]);
+        total = getDistance(loc[0], loc[1], route[start - 1][1], route[start - 1][2]);
+        for (var i = start; i < end && i < route.length; i++) {
+            total += getDistance(route[i - 1][1], route[i - 1][2], route[i][1], route[i][2]);
         }
         if (end > route.length) {
             total += getDistance(route[route.length - 1][1], route[route.length - 1][2], arrival[1], arrival[2]);
@@ -609,87 +623,88 @@ function formatCoords(a) {
     if (a.indexOf(' ') > -1) {
         var array = a.split(' ');
         var d = Number(array[0]);
-        var m = Number(array[1])/60;
+        var m = Number(array[1]) / 60;
         var coords;
-        if (d<0) coords = d - m;
+        if (d < 0) coords = d - m;
         else coords = d + m;
         return coords;
     } else return Number(a);
 }
 
 function getTurnDistance(angle) {
-	var v = ges.aircraft.animationValue.kcas;
-	var r = 0.107917 * Math.pow(Math.E, 0.0128693*v);
-	var a = angle * (Math.PI/180);
-	return r * Math.tan(a/2) + 0.20;
+    var v = ges.aircraft.animationValue.kcas;
+    var r = 0.107917 * Math.pow(Math.E, 0.0128693 * v);
+    var a = angle * (Math.PI / 180);
+    return r * Math.tan(a / 2) + 0.20;
 }
 
-window.getDistance = function (lat1, lon1, lat2, lon2) {
-    var dlat = (lat2-lat1)*Math.PI/180;
-    var dlon = (lon2-lon1)*Math.PI/180;
-    lat1 = lat1*Math.PI/180;
-    lat2 = lat2*Math.PI/180;
-    var a = Math.sin(dlat/2) * Math.sin(dlat/2) + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dlon/2) * Math.sin(dlon/2);
-    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+function getDistance(lat1, lon1, lat2, lon2) {
+    var dlat = (lat2 - lat1) * Math.PI / 180;
+    var dlon = (lon2 - lon1) * Math.PI / 180;
+    lat1 = lat1 * Math.PI / 180;
+    lat2 = lat2 * Math.PI / 180;
+    var a = Math.sin(dlat / 2) * Math.sin(dlat / 2) + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dlon / 2) * Math.sin(dlon / 2);
+    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return 3440.06 * c;
 }
 
-window.getBearing = function (lat1, lon1, lat2, lon2) {
-    lat1 = lat1*Math.PI/180;
-    lat2 = lat2*Math.PI/180;
-    lon1 = lon1*Math.PI/180;
-    lon2 = lon2*Math.PI/180;
-	var y = Math.sin(lon2-lon1) * Math.cos(lat2);
-	var x = Math.cos(lat1)*Math.sin(lat2) - Math.sin(lat1)*Math.cos(lat2)*Math.cos(lon2-lon1);
-	var brng = Math.atan2(y, x) * 180/Math.PI;
-	return brng;
+function getBearing(lat1, lon1, lat2, lon2) {
+    lat1 = lat1 * Math.PI / 180;
+    lat2 = lat2 * Math.PI / 180;
+    lon1 = lon1 * Math.PI / 180;
+    lon2 = lon2 * Math.PI / 180;
+    var y = Math.sin(lon2 - lon1) * Math.cos(lat2);
+    var x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1);
+    var brng = Math.atan2(y, x) * 180 / Math.PI;
+    return brng;
 }
 
 // This shouldn't be a window function, but problems may occur depending on browser version
-window.toRoute = function() {
-    if (link.indexOf('skyvector.com') != -1) {
+// @TODO require an argument; make it not dependent on the variable "link"
+window.toRoute = function () {
+    if (link.indexOf('skyvector.com') !== -1) {
         var departure = $('#wptDeparture')[0].checked;
         var arrival = $('#wptArrival')[0].checked;
-        var index = link.indexOf("plan=");
-        var str = link.substring(index + 5).split(":");
+        var index = link.indexOf('fpl=');
+        var str = link.substring(index + 4).trim().split(" ");
         var n = $('#waypoints tbody tr').length - 1;
         var a;
-        
-        for (var i = 0; i < n; i++) {
-            removeWaypoint(1);
-        }
-        route = [];
-        
-        if (departure) {
-            var wpt = str[0].substring(5);
-            $('#departureInput').val(wpt).change();
-            a = 1;
-        } else {
-            a = 0;
-            $('#departureInput').val("").change();
-        }
-        for (var i = 0; i+a < str.length; i++) {
-            addWaypoint();
-            var wpt = str[i+a].substring(5);
-            $('#waypoints input.wpt:eq(' + i + ')').val(wpt).change();
-        }
-        if (arrival) {
-            var wpt = str[str.length-1].substring(5);
-            $('#arrivalInput').val(wpt).change();
-        }
-    } else {
-        alert('Invalid URL');
-    }
-}
 
-ges.resetFlight = function() {
-	if (window.confirm('Reset Flight?')) {
-		if (ges.lastFlightCoordinates) {
-            ges.flyTo(ges.lastFlightCoordinates,true);
+        if (index !== -1) {
+            for (var i = 0; i < n; i++) {
+                removeWaypoint(1);
+            }
+            route = [];
+
+            if (departure) {
+                var wpt = str[0];
+                $('#departureInput').val(wpt).change();
+                a = 1;
+            } else {
+                a = 0;
+                $('#departureInput').val("").change();
+            }
+            for (var i = 0; i + a < str.length; i++) {
+                addWaypoint();
+                var wpt = str[i + a];
+                $('#waypoints input.wpt:eq(' + i + ')').val(wpt).change();
+            }
+            if (arrival) {
+                var wpt = str[str.length - 1];
+                $('#arrivalInput').val(wpt).change();
+            }
+        } else alert('Invalid URL');
+    } else alert('Invalid URL');
+};
+
+ges.resetFlight = function () {
+    if (window.confirm('Reset Flight?')) {
+        if (ges.lastFlightCoordinates) {
+            ges.flyTo(ges.lastFlightCoordinates, true);
             updateLog('Flight reset');
         }
-	}
-}
+    }
+};
 
 ges.togglePause = function () {
     if (!ges.pause) {
@@ -706,9 +721,9 @@ $('<button>')
     .attr('type', 'button')
     .attr('data-toggle', 'modal')
     .attr('data-target', '#fmcModal')
-    .css('margin-left','1px')
+    .css('margin-left', '1px')
     .text('FMC ')
-    .append( $('<i>').addClass('icon-list-alt'))
+    .append($('<i>').addClass('icon-list-alt'))
     .appendTo('div.setup-section:nth-child(2)');
 
 // FMC modal UI
@@ -723,132 +738,125 @@ $('<div>')
     .css('width', '590px')
     .append(
 
-    // Dialog
-    $('<div>')
+        // Dialog
+        $('<div>')
         .addClass('modal-dialog')
         .append(
 
-        // Content
-        $('<div>')
+            // Content
+            $('<div>')
             .addClass('modal-content')
             .append(
 
-            // Header
-            $('<div>')
+                // Header
+                $('<div>')
                 .addClass('modal-header')
                 .append(
-                $('<button>')
+                    $('<button>')
                     .addClass('close')
                     .attr('type', 'button')
                     .attr('data-dismiss', 'modal')
                     .attr('aria-hidden', 'true')
                     .text('\xD7') // &times;
-            ,   $('<h3>')
+                    , $('<h3>')
                     .addClass('modal-title')
                     .attr('id', 'myModalLabel')
                     .css('text-align', 'center')
                     .text('Flight Management Computer')
                 )
 
-            // Body
-        ,   $('<div>')
+                // Body
+                , $('<div>')
                 .addClass('modal-body')
                 .append(
 
-                // Navigation tabs
-                $('<ul>')
+                    // Navigation tabs
+                    $('<ul>')
                     .addClass('nav nav-tabs')
                     .append(
                         $('<li>')
-                            .addClass('active')
-                            .append('<a href="#rte" data-toggle="tab">RTE</a>')
-                    ,   $('<li>')
-                            .append('<a href="#arr" data-toggle="tab">DEP/ARR</a>')
-                    /*,   $('<li>')
-                            .append('<a href="#perf" data-toggle="tab">PERF</a>')*/
-                    ,   $('<li>')
-                            .append('<a href="#vnav" data-toggle="tab">VNAV</a>')
-                    ,   $('<li>')
-                            .append('<a href="#prog" data-toggle="tab">PROG</a>')
-                    ,   $('<li>')
-                            .append('<a href="#load" data-toggle="tab">LOAD</a>')
-                    ,   $('<li>')
-                            .append('<a href="#log" data-toggle="tab">LOG</a>')
+                        .addClass('active')
+                        .append('<a href="#rte" data-toggle="tab">RTE</a>'), $('<li>')
+                        .append('<a href="#arr" data-toggle="tab">DEP/ARR</a>')
+                        /*,   $('<li>')
+                                .append('<a href="#perf" data-toggle="tab">PERF</a>')*/
+                        , $('<li>')
+                        .append('<a href="#vnav" data-toggle="tab">VNAV</a>'), $('<li>')
+                        .append('<a href="#prog" data-toggle="tab">PROG</a>'), $('<li>')
+                        .append('<a href="#load" data-toggle="tab">LOAD</a>'), $('<li>')
+                        .append('<a href="#log" data-toggle="tab">LOG</a>')
                     )
 
-                // Tab Content
-            ,   $('<div>')
+                    // Tab Content
+                    , $('<div>')
                     .addClass('tab-content')
                     .css('padding', '5px')
                     .append(
 
-                    // ROUTE TAB
-                    $('<div>')
+                        // ROUTE TAB
+                        $('<div>')
                         .addClass('tab-pane active')
                         .attr('id', 'rte')
                         .append(
-                        $('<table>')
+                            $('<table>')
                             .append(
-                            $('<tr>')
+                                $('<tr>')
                                 .append(
-                                $('<table>')
+                                    $('<table>')
                                     .append(
-                                    $('<tr>')
+                                        $('<tr>')
                                         .append(
-            
-                                        // Departure Airport input
-                                        $('<td>')
+
+                                            // Departure Airport input
+                                            $('<td>')
                                             .css('padding', '5px')
                                             .append(
-                                            $('<div>')
+                                                $('<div>')
                                                 .addClass('input-prepend input-append')
                                                 .append(
-                                                $('<span>')
+                                                    $('<span>')
                                                     .addClass('add-on')
-                                                    .text('Departure')
-                                            ,   $('<input>')
+                                                    .text('Departure'), $('<input>')
                                                     .addClass('input-mini')
-                                                    .attr('id','departureInput')
+                                                    .attr('id', 'departureInput')
                                                     .attr('type', 'text')
                                                     .attr('placeholder', 'ICAO')
                                                 )
                                             )
-        
-                                        // Arrival Airport input
-                                    ,   $('<td>')
+
+                                            // Arrival Airport input
+                                            , $('<td>')
                                             .css('padding', '5px')
                                             .append(
-                                            $('<div>')
+                                                $('<div>')
                                                 .addClass('input-prepend input-append')
                                                 .append(
-                                                $('<span>')
+                                                    $('<span>')
                                                     .addClass('add-on')
-                                                    .text('Arrival')
-                                            ,   $('<input>')
+                                                    .text('Arrival'), $('<input>')
                                                     .addClass('input-mini')
                                                     .attr('type', 'text')
-                                                    .attr('id','arrivalInput')
+                                                    .attr('id', 'arrivalInput')
                                                     .attr('placeholder', 'ICAO')
-                                                    .change(function() {
+                                                    .change(function () {
                                                         var wpt = $(this).val();
                                                         var coords = getCoords(wpt);
                                                         if (!coords) {
                                                             alert('Invalid Airport code');
                                                             this.val('');
-                                                        }
-                                                        else arrival = [wpt, coords[0], coords[1]];
+                                                        } else arrival = [wpt, coords[0], coords[1]];
                                                     })
                                                 )
                                             )
-            
-                                        // Flight # input
-                                    ,   $('<td>')
+
+                                            // Flight # input
+                                            , $('<td>')
                                             .css('padding', '5px')
                                             .append(
-                                            $('<div>')
+                                                $('<div>')
                                                 .addClass('input-prepend input-append')
                                                 .append(
-                                                $('<span>')
+                                                    $('<span>')
                                                     .addClass('add-on')
                                                     .text('Flight #'), $('<input>')
                                                     .addClass('input-mini')
@@ -859,41 +867,38 @@ $('<div>')
                                         )
                                     )
                                 )
-                            
-                            // Waypoints list labels
-                        ,   $('<tr>')
+
+                                // Waypoints list labels
+                                , $('<tr>')
                                 .append(
-                                $('<table>')
-                                    .attr('id','waypoints')
-                                    .append( 
-                                    $('<tr>')
+                                    $('<table>')
+                                    .attr('id', 'waypoints')
+                                    .append(
+                                        $('<tr>')
                                         .append(
-                                        $('<td>').append('<th>Waypoints</th>')
-                                    ,   $('<td>').append('<th>Position</th>')
-                                    ,   $('<td>').append('<th>Altitude</th>')
-                                    ,   $('<td>').append('<th>Actions</th>')
+                                            $('<td>').append('<th>Waypoints</th>'), $('<td>').append('<th>Position</th>'), $('<td>').append('<th>Altitude</th>'), $('<td>').append('<th>Actions</th>')
                                         )
                                     )
                                 )
-                                
-                            // Add Waypoint
-                        ,   $('<tr>')
+
+                                // Add Waypoint
+                                , $('<tr>')
                                 .append(
-                                $('<div>')
-                                    .attr('id','waypointsAddDel')
+                                    $('<div>')
+                                    .attr('id', 'waypointsAddDel')
                                     .append(
-                                    $('<table>')
+                                        $('<table>')
                                         .append(
-                                        $('<tr>')
+                                            $('<tr>')
                                             .append(
-                                            $('<td>')
+                                                $('<td>')
                                                 .append(
-                                                $('<button>')
+                                                    $('<button>')
                                                     .addClass('btn btn-primary')
                                                     .attr('type', 'button')
                                                     .text('Add Waypoint ')
-                                                    .append( $('<i>').addClass('icon-plus'))
-                                                    .click(function() {
+                                                    .append($('<i>').addClass('icon-plus'))
+                                                    .click(function () {
                                                         addWaypoint();
                                                     })
                                                     .css('margin-right', '3px')
@@ -905,53 +910,50 @@ $('<div>')
                             )
                         )
 
-                    // PERFORMANCE TAB
-                ,   $('<div>')
+                        // PERFORMANCE TAB
+                        , $('<div>')
                         .addClass('tab-pane')
                         .attr('id', 'perf')
-                        .append( $('<p>PERF</p>'))
+                        .append($('<p>PERF</p>'))
 
-                    // ARRIVAL TAB
-                ,   $('<div>')
+                        // ARRIVAL TAB
+                        , $('<div>')
                         .addClass('tab-pane')
                         .attr('id', 'arr')
                         .append(
-                        $('<table>')
+                            $('<table>')
                             .append(
-                            $('<tr>')
+                                $('<tr>')
                                 .append(
-                                $('<td>')
+                                    $('<td>')
                                     .append(
-                                    $('<div>')
+                                        $('<div>')
                                         .addClass('input-prepend input-append')
                                         .append(
-                                        $('<span>')
+                                            $('<span>')
                                             .addClass('add-on')
-                                            .text('TOD Dist.')
-                                    ,   $('<input>')
+                                            .text('TOD Dist.'), $('<input>')
                                             .addClass('gefs-stopPropagation')
                                             .attr('id', 'todInput')
                                             .attr('type', 'number')
                                             .attr('placeholder', 'nm')
                                             .css('width', '38px')
-                                            .change(function() {
+                                            .change(function () {
                                                 tod = $(this).val();
                                             })
                                         )
-                                    )
-                            ,   $('<td>')
+                                    ), $('<td>')
                                     .append(
-                                    $('<div>')
+                                        $('<div>')
                                         .addClass('input-prepend input-append')
                                         .append(
-                                        $('<span>')
+                                            $('<span>')
                                             .addClass('add-on')
-                                            .text('Automatically calculate TOD')
-                                    ,   $('<button>')
+                                            .text('Automatically calculate TOD'), $('<button>')
                                             .addClass('btn btn-standard')
                                             .attr('type', 'button')
                                             .text('OFF')
-                                            .click(function() {
+                                            .click(function () {
                                                 if (!todCalc) {
                                                     $(this).removeClass('btn btn-standard').addClass('btn btn-warning').text('ON');
                                                     todCalc = true;
@@ -962,23 +964,21 @@ $('<div>')
                                             })
                                         )
                                     )
-                                )
-                        ,   $('<tr>')
+                                ), $('<tr>')
                                 .append(
-                                $('<td>')
+                                    $('<td>')
                                     .append(
-                                    $('<div>')
+                                        $('<div>')
                                         .addClass('input-prepend input-append')
                                         .append(
-                                        $('<span>')
+                                            $('<span>')
                                             .addClass('add-on')
-                                            .text('Arrival Airport Altitude')
-                                    ,   $('<input>')
+                                            .text('Arrival Airport Altitude'), $('<input>')
                                             .addClass('input-medium')
-                                            .attr('type','number')
-                                            .attr('placeholder','ft.')
-                                            .css('width','50px')
-                                            .change(function() {
+                                            .attr('type', 'number')
+                                            .attr('placeholder', 'ft.')
+                                            .css('width', '50px')
+                                            .change(function () {
                                                 arrivalAlt = Number($(this).val());
                                             })
                                         )
@@ -987,41 +987,41 @@ $('<div>')
                             )
                         )
 
-                    // VNAV tab
-                ,   $('<div>')
+                        // VNAV tab
+                        , $('<div>')
                         .addClass('tab-pane')
-                        .attr('id','vnav')
+                        .attr('id', 'vnav')
                         .append(
-                            
-                        // AUTO-CLIMB/DESCENT, CRUISE ALT ROW
-                        $('<table>')
+
+                            // AUTO-CLIMB/DESCENT, CRUISE ALT ROW
+                            $('<table>')
                             .append(
-                            $('<tr>')
+                                $('<tr>')
                                 .append(
-                                $('<td>')
+                                    $('<td>')
                                     .append(
-                                    $('<button>')
+                                        $('<button>')
                                         .addClass('btn')
-                                        .attr('id','vnavButton')
+                                        .attr('id', 'vnavButton')
                                         .text('VNAV ')
-                                        .append( $('<i>').addClass('icon icon-resize-vertical'))
-                                        .click(function() {toggleVNAV()})
-                                    )
-                            ,   $('<td>')
+                                        .append($('<i>').addClass('icon icon-resize-vertical'))
+                                        .click(function () {
+                                            toggleVNAV()
+                                        })
+                                    ), $('<td>')
                                     .append(
-                                    $('<div>')
+                                        $('<div>')
                                         .css('margin-top', '5px')
                                         .addClass('input-prepend input-append')
-                                        .append( 
-                                        $('<span>')
+                                        .append(
+                                            $('<span>')
                                             .addClass('add-on')
-                                            .text('Cruise Alt.')
-                                    ,   $('<input>')
+                                            .text('Cruise Alt.'), $('<input>')
                                             .addClass('gefs-stopPropagation')
                                             .attr('type', 'number')
                                             .attr('placeholder', 'ft')
                                             .css('width', '80px')
-                                            .change(function() {
+                                            .change(function () {
                                                 cruise = $(this).val();
                                                 console.log("Cruise Alt set to " + cruise + " ft.");
                                             })
@@ -1030,52 +1030,52 @@ $('<div>')
                                 )
                             )
                         )
-                    
-                    // Progress tab
-                ,   $('<div>')
+
+                        // Progress tab
+                        , $('<div>')
                         .addClass('tab-pane')
-                        .attr('id','prog')
+                        .attr('id', 'prog')
                         .append(
-                        $('<table>')
+                            $('<table>')
                             .append(
-                            $('<tr>')
-                                .append( 
-                                $('<td>')
+                                $('<tr>')
+                                .append(
+                                    $('<td>')
                                     .append(
-                                    $('<div>')
+                                        $('<div>')
                                         .addClass('input-prepend input-append')
                                         .append(
-                                        $('<span>')
+                                            $('<span>')
                                             .addClass('add-on')
-                                            .text('Dest')
-                                    ,   $('<span>')
+                                            .text('Dest'), $('<span>')
                                             .addClass('add-on')
                                             .css('background-color', 'white')
                                             .css('width', '53px')
-                                            .append( $('<div>').attr('id', 'flightdist'))
-                                    ,	$('<span>')
+                                            .append($('<div>').attr('id', 'flightdist')), $('<span>')
                                             .addClass('add-on')
                                             .css('background-color', 'white')
                                             .css('width', '50px')
                                             .append(
-                                            $('<table>')
-                                                .css({'position': 'relative', 'top': '-6px'})
+                                                $('<table>')
+                                                .css({
+                                                    'position': 'relative',
+                                                    'top': '-6px'
+                                                })
                                                 .append(
-                                                $('<tr>')
+                                                    $('<tr>')
                                                     .append(
-                                                    $('<td>')
+                                                        $('<td>')
                                                         .append(
-                                                        $('<div>')
+                                                            $('<div>')
                                                             .attr('id', 'flightete')
                                                             .css('font-size', '70%')
                                                             .css('height', '10px')
                                                         )
-                                                    )
-                                            ,   $('<tr>')
+                                                    ), $('<tr>')
                                                     .append(
-                                                    $('<td>')
+                                                        $('<td>')
                                                         .append(
-                                                        $('<div>')
+                                                            $('<div>')
                                                             .attr('id', 'flighteta')
                                                             .css('font-size', '70%')
                                                             .css('height', '10px')
@@ -1084,43 +1084,41 @@ $('<div>')
                                                 )
                                             )
                                         )
-                                    )
-                            ,   $('<td>')
+                                    ), $('<td>')
                                     .append(
-                                    $('<div>')
+                                        $('<div>')
                                         .addClass('input-prepend input-append')
                                         .append(
-                                        $('<span>')
+                                            $('<span>')
                                             .addClass('add-on')
-                                            .text('TOD')
-                                    ,   $('<span>')
+                                            .text('TOD'), $('<span>')
                                             .addClass('add-on')
                                             .css('background-color', 'white')
                                             .css('width', '53px')
-                                            .append( $('<div>').attr('id', 'toddist'))
-                                    ,   $('<span>')
+                                            .append($('<div>').attr('id', 'toddist')), $('<span>')
                                             .addClass('add-on')
                                             .css('background-color', 'white')
                                             .css('width', '50px')
                                             .append(
-                                            $('<table>')
-                                                .css({'position': 'relative', 'top': '-6px'})
+                                                $('<table>')
+                                                .css({
+                                                    'position': 'relative',
+                                                    'top': '-6px'
+                                                })
                                                 .append(
-                                                $('<tr>')
-                                                    .append( 
-                                                    $('<td>')
-                                                        .append( $
-                                                        ('<div>')
+                                                    $('<tr>')
+                                                    .append(
+                                                        $('<td>')
+                                                        .append($('<div>')
                                                             .attr('id', 'todete')
                                                             .css('font-size', '70%')
                                                             .css('height', '10px')
                                                         )
-                                                    )
-                                            ,   $('<tr>')
+                                                    ), $('<tr>')
                                                     .append(
-                                                    $('<td>')
+                                                        $('<td>')
                                                         .append(
-                                                        $('<div>')
+                                                            $('<div>')
                                                             .attr('id', 'todeta')
                                                             .css('font-size', '70%')
                                                             .css('height', '10px')
@@ -1130,151 +1128,136 @@ $('<div>')
                                             )
                                         )
                                     )
-                                )
-                        ,   $('<tr>')
+                                ), $('<tr>')
                                 .append(
-                                $('<td>')
+                                    $('<td>')
                                     .append(
-                                    $('<div>')
+                                        $('<div>')
                                         .addClass('input-prepend input-append')
-                                        .append( 
-                                        $('<span>')
+                                        .append(
+                                            $('<span>')
                                             .addClass('add-on')
                                             .text('Next Waypoint ')
-                                            .append( $('<i>').addClass('icon-map-marker'))
-                                    ,   $('<span>')
+                                            .append($('<i>').addClass('icon-map-marker')), $('<span>')
                                             .addClass('add-on')
                                             .css('background-color', 'white')
                                             .css('width', '53px')
-                                            .append( $('<div>').attr('id', 'nextDist'))
-                                    ,   $('<span>')
+                                            .append($('<div>').attr('id', 'nextDist')), $('<span>')
                                             .addClass('add-on')
                                             .css('background-color', 'white')
                                             .css('width', '53px')
-                                            .append( $('<div>').attr('id', 'nextETE'))
+                                            .append($('<div>').attr('id', 'nextETE'))
                                         )
                                     )
                                 )
                             )
                         )
-                
-                    // LOAD TAB
-                ,   $('<div>')
+
+                        // LOAD TAB
+                        , $('<div>')
                         .addClass('tab-pane')
                         .attr('id', 'load')
                         .append(
-                        $('<form>')
-                            .attr('action','javascript:toRoute();')
+                            $('<form>')
+                            .attr('action', 'javascript:toRoute();')
                             .addClass('form-horizontal')
                             .append(
-                            $('<fieldset>')
+                                $('<fieldset>')
                                 .append(
-                                $('<div>')
+                                    $('<div>')
                                     .addClass('input-prepend input-append')
                                     .append(
-                                    $('<span>')
+                                        $('<span>')
                                         .addClass('add-on')
                                         .text('SkyVector link ')
-                                        .append( $('<i>').addClass('icon-globe'))
-                                ,   $('<input>')
+                                        .append($('<i>').addClass('icon-globe')), $('<input>')
                                         .attr('type', 'text')
                                         .addClass('input-xlarge gefs-stopPropagation')
-                                        .change(function() {
+                                        .change(function () {
                                             link = $(this).val();
                                         })
-                                    )
-                            ,   $('<label class = "checkbox"><input type="checkbox" id="wptDeparture" value="true" checked> First waypoint is departure airport</label>')
-                            ,   $('<label class = "checkbox"><input type="checkbox" id="wptArrival" value="true" checked> Last waypoint is arrival airport</label>')
-                            ,   $('<button>')
+                                    ), $('<label class = "checkbox"><input type="checkbox" id="wptDeparture" value="true" checked> First waypoint is departure airport</label>'), $('<label class = "checkbox"><input type="checkbox" id="wptArrival" value="true" checked> Last waypoint is arrival airport</label>'), $('<button>')
                                     .attr('type', 'submit')
                                     .addClass('btn btn-primary')
                                     .text('Load Route ')
-                                    .append( $('<i>').addClass('icon-play'))
+                                    .append($('<i>').addClass('icon-play'))
                                 )
                             )
                         )
-                        
-                    // Log tab
-                ,   $('<div>')
+
+                        // Log tab
+                        , $('<div>')
                         .addClass('tab-pane')
-                        .attr('id','log')
+                        .attr('id', 'log')
                         .append(
-                        $('<table>')
-                            .attr('id','logData')
+                            $('<table>')
+                            .attr('id', 'logData')
                             .append(
-                            $('<tr>')
+                                $('<tr>')
                                 .append(
-                                $('<th>Time</th>')
-                                    .css('padding','0px 10px 0px 10px')
-                            ,   $('<th>Speed</th>')
-                                    .css('padding','0px 10px 0px 10px')
-                            ,   $('<th>Heading</th>')
-                                    .css('padding','0px 10px 0px 10px')
-                            ,   $('<th>Altitude</th>')
-                                    .css('padding','0px 10px 0px 10px')
-                            ,   $('<th>Lat.</th>')
-                                    .css('padding','0px 10px 0px 10px')
-                            ,   $('<th>Lon.</th>')
-                                    .css('padding','0px 10px 0px 10px')
-                            ,   $('<th>FPS</th>')
-                                    .css('padding','0px 10px 0px 10px')
-                            ,   $('<th>Other</th>')
-                                    .css('padding','0px 10px 0px 10px')
+                                    $('<th>Time</th>')
+                                    .css('padding', '0px 10px 0px 10px'), $('<th>Speed</th>')
+                                    .css('padding', '0px 10px 0px 10px'), $('<th>Heading</th>')
+                                    .css('padding', '0px 10px 0px 10px'), $('<th>Altitude</th>')
+                                    .css('padding', '0px 10px 0px 10px'), $('<th>Lat.</th>')
+                                    .css('padding', '0px 10px 0px 10px'), $('<th>Lon.</th>')
+                                    .css('padding', '0px 10px 0px 10px'), $('<th>FPS</th>')
+                                    .css('padding', '0px 10px 0px 10px'), $('<th>Other</th>')
+                                    .css('padding', '0px 10px 0px 10px')
                                 )
-                            )
-                    ,   $('<button>')
+                            ), $('<button>')
                             .addClass('btn btn-danger')
-                            .attr('type','button')
-                            .click(function() {removeLogData()})
+                            .attr('type', 'button')
+                            .click(function () {
+                                removeLogData()
+                            })
                             .text('Clear Log ')
-                            .append( $('<i>').addClass('icon-remove-circle'))
+                            .append($('<i>').addClass('icon-remove-circle'))
                         )
                     )
                 )
-            
-            // Footer
-        ,   $('<div>')
+
+                // Footer
+                , $('<div>')
                 .addClass('modal-footer')
                 .append(
-                $('<button>')
+                    $('<button>')
                     .addClass('btn btn-default')
                     .attr('type', 'button')
                     .attr('data-dismiss', 'modal')
-                    .text('Close')
-            ,   $('<button>')
+                    .text('Close'), $('<button>')
                     .addClass('btn btn-primary')
                     .attr('type', 'button')
                     .text('Save changes ')
-                    .append( $('<i>').addClass('icon-hdd'))
+                    .append($('<i>').addClass('icon-hdd'))
                 )
             )
-        )
-,   $('<iframe frame-border="no" class="gefs-shim-iframe"></iframe>')
+        ), $('<iframe frame-border="no" class="gefs-shim-iframe"></iframe>')
     ).appendTo('body');
 
 
 $('<div>')
-	.addClass('setup-section')
-	.css('padding-bottom','0px')
-	.append( $('<div>')
-		.addClass('input-prepend input-append')
-		.css('margin-bottom','4px')
-		.append(
-		$('<span>')
-			.addClass('add-on')
-			.text('Dest'),
-		$('<span>')
-			.addClass('add-on')
-			.css('background-color', 'white')
-			.css('width', '53px')
-			.append(
-			$('<div>')
-				.attr('id', 'externaldist')
-			)
-		)
-	).appendTo('td.gefs-f-standard');
+    .addClass('setup-section')
+    .css('padding-bottom', '0px')
+    .append($('<div>')
+        .addClass('input-prepend input-append')
+        .css('margin-bottom', '4px')
+        .append(
+            $('<span>')
+            .addClass('add-on')
+            .text('Dest'),
+            $('<span>')
+            .addClass('add-on')
+            .css('background-color', 'white')
+            .css('width', '53px')
+            .append(
+                $('<div>')
+                .attr('id', 'externaldist')
+            )
+        )
+    ).appendTo('td.gefs-f-standard');
 
-for (var i=1; i<2; i++) {
+for (var i = 1; i < 2; i++) {
     addWaypoint();
 }
 
@@ -1282,7 +1265,7 @@ $('#fmcModal').modal({
     backdrop: false,
     show: false
 });
-    
+
 function toggleVNAV() {
     if (VNAV) {
         VNAV = false;
@@ -1298,24 +1281,24 @@ function toggleVNAV() {
 function addWaypoint() {
     route.length++;
     var n = route.length;
-    route[route.length-1] = [];
+    route[route.length - 1] = [];
     $('<tr>')
         .addClass('waypoint')
         .append(
-            
-        // Waypoint
-        $('<td>')
+
+            // Waypoint
+            $('<td>')
             .append(
-            $('<div>')
+                $('<div>')
                 .addClass('input-prepend input-append')
                 .append(
-                $('<input>')
+                    $('<input>')
                     .addClass('input-medium')
                     .addClass('wpt')
-                    .css('width','75px')
+                    .css('width', '75px')
                     .attr('type', 'text')
                     .attr('placeholder', 'Fix/Apt.')
-                    .change(function() {
+                    .change(function () {
                         var n = $(this).val();
                         var coords = getCoords(n);
                         var index = $(this).parents().eq(2).index() - 1;
@@ -1330,100 +1313,105 @@ function addWaypoint() {
                     })
                 )
             )
-            
-        // Position
-    ,   $('<td>')
+
+            // Position
+            , $('<td>')
             .addClass('position')
             .append(
-            $('<div>')
+                $('<div>')
                 .addClass('input-prepend input-append')
                 .append(
-                $('<input>')
+                    $('<input>')
                     .addClass('input-medium lat')
-                    .css('width','80px')
-                    .attr({'type':'text','tabindex':'-1'})
-                    .change(function() {
+                    .css('width', '80px')
+                    .attr({
+                        'type': 'text',
+                        'tabindex': '-1'
+                    })
+                    .change(function () {
                         var index = $(this).parents().eq(2).index() - 1;
                         route[index][1] = formatCoords($(this).val());
                         route[index][4] = false;
-                    })
-            ,   $('<input>')
+                    }), $('<input>')
                     .addClass('input-medium lon')
-                    .css('width','80px')
-                    .attr({'type':'text','tabindex':'-1'})
-                    .change(function() {
+                    .css('width', '80px')
+                    .attr({
+                        'type': 'text',
+                        'tabindex': '-1'
+                    })
+                    .change(function () {
                         var index = $(this).parents().eq(2).index() - 1;
                         route[index][2] = formatCoords($(this).val());
                         route[index][4] = false;
                     })
                 )
             )
-        
-        // Altitude
-    ,   $('<td>')
+
+            // Altitude
+            , $('<td>')
             .addClass('altitude')
             .append(
-            $('<div>')
+                $('<div>')
                 .addClass('input-prepend input-append')
                 .append(
-                $('<input>')
+                    $('<input>')
                     .addClass('input-medium')
-                    .css('width','40px')
+                    .css('width', '40px')
                     .attr({
-                        'type':'text',
-                        'tabindex':'-1',
-                        'placeholder':'Ft.'
+                        'type': 'text',
+                        'tabindex': '-1',
+                        'placeholder': 'Ft.'
                     })
-                    .change(function() {
+                    .change(function () {
                         var index = $(this).parents().eq(2).index() - 1;
-                        route[index][3] = Number( $(this).val());
+                        route[index][3] = Number($(this).val());
                     })
                 )
             )
-            
-        // Actions
-    ,   $('<td>')
+
+            // Actions
+            , $('<td>')
             .append(
-            $('<div>')
+                $('<div>')
                 .addClass('input-prepend input-append')
                 .append(
-                    
-                // Activate
-                $('<button>')
+
+                    // Activate
+                    $('<button>')
                     .attr('type', 'button')
                     .addClass('btn btn-standard activate')
                     .text('Activate')
-                    .click(function() {
+                    .click(function () {
                         var n = $(this).parents().eq(2).index();
                         activateLeg(n);
                     })
-                
-                // Shift up
-            ,   $('<button>')
+
+                    // Shift up
+                    , $('<button>')
                     .attr('type', 'button')
                     .addClass('btn btn-info')
-                    .append( $('<i>').addClass('icon-arrow-up'))
-                    .click(function() {
+                    .append($('<i>').addClass('icon-arrow-up'))
+                    .click(function () {
                         var row = $(this).parents().eq(2);
                         shiftWaypoint(row, row.index(), "up");
                     })
-                    
-                // Shift down
-            ,   $('<button>')
+
+                    // Shift down
+                    , $('<button>')
                     .attr('type', 'button')
                     .addClass('btn btn-info')
-                    .append( $('<i>').addClass('icon-arrow-down'))
-                    .click(function() {
+                    .append($('<i>').addClass('icon-arrow-down'))
+                    .click(function () {
                         var row = $(this).parents().eq(2);
                         shiftWaypoint(row, row.index(), "down");
                     })
-                    
-                // Remove
-            ,   $('<button>')
+
+                    // Remove
+                    , $('<button>')
                     .attr('type', 'button')
                     .addClass('btn btn-danger')
-                    .append( $('<i>').addClass('icon-remove'))
-                    .click(function() {
+                    .append($('<i>').addClass('icon-remove'))
+                    .click(function () {
                         var n = $(this).parents().eq(2).index();
                         removeWaypoint(n);
                     })
@@ -1433,8 +1421,8 @@ function addWaypoint() {
 }
 
 function removeWaypoint(n) {
-    $('#waypoints tr:nth-child(' + (n+1) + ')').remove();
-    route.splice((n-1), 1);
+    $('#waypoints tr:nth-child(' + (n + 1) + ')').remove();
+    route.splice((n - 1), 1);
     if (nextWaypoint == n) {
         nextWaypoint = null;
     }
@@ -1444,20 +1432,20 @@ function shiftWaypoint(r, n, d) {
     console.log("Waypoint #" + n + " moved " + d);
     if (!(d == "up" && n == 1 || d == "down" && n == route.length)) {
         if (d == "up") {
-            route.move(n-1, n-2);
+            route.move(n - 1, n - 2);
             r.insertBefore(r.prev());
-            if (nextWaypoint == n)  {
-                nextWaypoint = n-1;
-            } else if (nextWaypoint == n-1) {
-                nextWaypoint = n+1;
+            if (nextWaypoint == n) {
+                nextWaypoint = n - 1;
+            } else if (nextWaypoint == n - 1) {
+                nextWaypoint = n + 1;
             }
         } else {
-            route.move(n-1, n);
+            route.move(n - 1, n);
             r.insertAfter(r.next());
             if (nextWaypoint == n) {
-                nextWaypoint = n+1;
-            } else if (nextWaypoint == n+1) {
-                nextWaypoint = n-1;
+                nextWaypoint = n + 1;
+            } else if (nextWaypoint == n + 1) {
+                nextWaypoint = n - 1;
             }
         }
     }
@@ -1478,14 +1466,7 @@ Array.prototype.move = function (index1, index2) {
     return this;
 };
 
-// Fixes the "T" keyup bug
-/*
-var oldOpen = ui.openChat;
-
-ui.openChat = function () {
-	if (!$('#fmcModal').is(':visible')) oldOpen();
-}
-*/
+// "T" Keyup bug fix
 $('#fmcModal').keyup(function (event) {
-  event.stopImmediatePropagation();
+    event.stopImmediatePropagation();
 });
