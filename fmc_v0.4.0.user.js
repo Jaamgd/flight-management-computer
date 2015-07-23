@@ -656,7 +656,7 @@ fmc.math.getClimbrate = function (deltaAlt, nextDist) {
 	var factor = fmc.math.nmToFeet;
 	var vs = 100 * Math.round((gs * (deltaAlt / (nextDist * factor)) * factor / 60) / 100);
 	return vs;
-}
+};
 
 function getCoords(wpt) {
 	if (autopilot_pp.require('icaoairports')[wpt]) {
@@ -1069,7 +1069,9 @@ $('<div>')
 										.attr('id','vnavButton')
 										.text('VNAV ')
 										.append( $('<i>').addClass('icon icon-resize-vertical'))
-										.click(function() {toggleVNAV()})
+										.click(function() {
+											toggleVNAV();
+										})
 									)
 							,   $('<td>')
 									.append(
@@ -1295,7 +1297,9 @@ $('<div>')
 					,   $('<button>')
 							.addClass('btn btn-danger')
 							.attr('type','button')
-							.click(function() {removeLogData()})
+							.click(function() {
+								removeLogData();
+							})
 							.text('Clear Log ')
 							.append( $('<i>').addClass('icon-remove-circle'))
 						)
@@ -1395,7 +1399,7 @@ function addWaypoint() {
 						} else {
 							$(this).parents().eq(2).children('.position').children('div').children('.lat').val(coords[0]);
 							$(this).parents().eq(2).children('.position').children('div').children('.lon').val(coords[1]);
-							route[index] = [n, coords[0], coords[1], , true];
+							route[index] = [n, coords[0], coords[1],/* TODO What is this?*/ , true];
 						}
 					})
 				)
