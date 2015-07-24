@@ -28,6 +28,7 @@ window.fmc = {
 	},
 	waypoints: {
 		input: "",
+		route: [],
 		toArray: function () {
 			var result = [];
 			for (var i = 0; i < $('.waypoint').length; i++) {
@@ -50,7 +51,6 @@ window.fmc = {
 var tod;
 var VNAV = false;
 var arrival = [];
-var route = [];
 var nextWaypoint;
 var cruise;
 var date = new Date();
@@ -70,10 +70,10 @@ function updateProgress() {
 		nextdist = (Math.round(10 * nextdist)) / 10;
 	} else nextdist = Math.round(nextdist);
 	var flightdist;
-	for (var i = 0, test = true; i < route.length; i++) {
-		if (!route[i][1]) test = false;
+	for (var i = 0, test = true; i < fmc.waypoints.route.length; i++) {
+		if (!fmc.waypoints.route[i][1]) test = false;
 	}
-	if (test) flightdist = getRouteDistance(route.length + 1);
+	if (test) flightdist = getRouteDistance(fmc.waypoints.route.length + 1);
 	else flightdist = fmc.math.getDistance(lat1, lon1, lat2, lon2);
 	var aircraft = ges.aircraft.name;
 
@@ -107,7 +107,7 @@ function updateVNAV() {
 	var currentAlt = ges.aircraft.animationValue.altitude;
 	var targetAlt;
 	try {
-		targetAlt = route[next - 1][3];
+		targetAlt = fmc.waypoints.route[next - 1][3];
 	} catch (e) {
 		targetAlt = currentAlt;
 	}
@@ -120,7 +120,7 @@ function updateVNAV() {
 	var vs, alt;
 
 	if (next) {
-		console.log('Next Waypoint with Altitude Restriction: ' + route[next - 1][0] + ' @ ' + route[next - 1][3]);
+		console.log('Next Waypoint with Altitude Restriction: ' + fmc.waypoints.route[next - 1][0] + ' @ ' + fmc.waypoints.route[next - 1][3]);
 		console.log('deltaAlt: ' + deltaAlt + ', targetDist: ' + targetDist + ', nextDist: ' + nextDist);
 
 		if (nextDist < targetDist) {
@@ -148,7 +148,7 @@ function updateVNAV() {
 
 	if (todCalc || !tod) {
 		if (next) {
-			tod = getRouteDistance(route.length) - nextDist;
+			tod = getRouteDistance(fmc.waypoints.route.length) - nextDist;
 			tod += targetDist;
 		} else {
 			tod = getTargetDist(cruise - arrivalAlt);
@@ -552,9 +552,9 @@ function getFlightParameters(aircraft) {
 
 function activateLeg(n) {
 	if (nextWaypoint != n) {
-		if (n <= route.length) {
+		if (n <= fmc.waypoints.route.length) {
 			nextWaypoint = n;
-			var wpt = route[nextWaypoint - 1];
+			var wpt = fmc.waypoints.route[nextWaypoint - 1];
 			if (wpt[3]) {
 				$('#Qantas94Heavy-ap-icao > input').val(wpt[0]).change();
 			} else {
@@ -576,8 +576,8 @@ function activateLeg(n) {
 }
 
 function getNextWaypointWithAltRestriction() {
-	for (var i = nextWaypoint; i <= route.length; i++) {
-		if (route[i - 1][3]) return i;
+	for (var i = nextWaypoint; i <= fmc.waypoints.route.length; i++) {
+		if (fmc.waypoints.route[i - 1][3]) return i;
 	}
 }
 
@@ -627,15 +627,15 @@ function getRouteDistance(end) {
 	var loc = ges.aircraft.llaLocation || [0, 0, 0];
 	var start = nextWaypoint || 0;
 	var total;
-	if (route.length === 0 || !nextWaypoint) {
+	if (fmc.waypoints.route.length === 0 || !nextWaypoint) {
 		total = fmc.math.getDistance(loc[0], loc[1], arrival[1], arrival[2]);
 	} else {
-		total = fmc.math.getDistance(loc[0], loc[1], route[start - 1][1], route[start - 1][2]);
-		for (var i = start; i < end && i < route.length; i++) {
-			total += fmc.math.getDistance(route[i - 1][1], route[i - 1][2], route[i][1], route[i][2]);
+		total = fmc.math.getDistance(loc[0], loc[1], fmc.waypoints.route[start - 1][1], fmc.waypoints.route[start - 1][2]);
+		for (var i = start; i < end && i < fmc.waypoints.route.length; i++) {
+			total += fmc.math.getDistance(fmc.waypoints.route[i - 1][1], fmc.waypoints.route[i - 1][2], fmc.waypoints.route[i][1], fmc.waypoints.route[i][2]);
 		}
-		if (end > route.length) {
-			total += fmc.math.getDistance(route[route.length - 1][1], route[route.length - 1][2], arrival[1], arrival[2]);
+		if (end > fmc.waypoints.route.length) {
+			total += fmc.math.getDistance(fmc.waypoints.route[fmc.waypoints.route.length - 1][1], fmc.waypoints.route[fmc.waypoints.route.length - 1][2], arrival[1], arrival[2]);
 		}
 	}
 	return total;
@@ -709,39 +709,50 @@ fmc.math.getBearing = function (lat1, lon1, lat2, lon2) {
 };
 
 fmc.waypoints.toRoute = function (url) {
-	if (url.indexOf('skyvector.com') !== -1) {
-		var departure = $('#wptDeparture')[0].checked;
-		var arrival = $('#wptArrival')[0].checked;
-		var index = url.indexOf('fpl=');
-		var str = url.substring(index + 4).trim().split(" ");
-		var n = $('#waypoints tbody tr').length - 1;
-		var a;
+	var index = url.indexOf('fpl=')
+	var isSkyvector = url.indexOf('skyvector.com') !== -1 && index !== -1;
+	var isWaypoints = true;
+	var departure = $('#wptDeparture')[0].checked;
+	var arrival = $('#wptArrival')[0].checked;
+	var n = $('#waypoints tbody tr').length - 1;
+	var a;
+	var str = [];
 
-		if (index !== -1) {
-			for (var i = 0; i < n; i++) {
-				removeWaypoint(1);
-			}
-			route = [];
+	if (isSkyvector) str = url.substring(index + 4).trim().split(" ");
+	else {
+		str = url.trim().toUpperCase().split(" ");
+		for (var i = 0; i < str.length; i++)
+			if (str[i].length > 5 || str[i].length < 1 || !str[i].match(/[a-z]/i))
+				isWaypoints = false;
+	}
 
-			if (departure) {
-				var wpt = str[0];
-				$('#departureInput').val(wpt).change();
-				a = 1;
-			} else {
-				a = 0;
-				$('#departureInput').val("").change();
-			}
-			for (var i = 0; i + a < str.length; i++) {
-				addWaypoint();
-				var wpt = str[i + a];
-				$('#waypoints input.wpt:eq(' + i + ')').val(wpt).change();
-			}
-			if (arrival) {
-				var wpt = str[str.length - 1];
-				$('#arrivalInput').val(wpt).change();
-			}
-		} else alert('Invalid URL');
-	} else alert('Invalid URL');
+	if (isSkyvector || isWaypoints) {
+		for (var i = 0; i < n; i++) {
+			removeWaypoint(1);
+		}
+		fmc.waypoints.route = [];
+
+		if (departure) {
+			var wpt = str[0];
+			$('#departureInput').val(wpt).change();
+			a = 1;
+		} else {
+			a = 0;
+			$('#departureInput').val("").change();
+		}
+		for (var i = 0; i + a < str.length; i++) {
+			addWaypoint();
+			var wpt = str[i + a];
+			$('#waypoints input.wpt:eq(' + i + ')').val(wpt).change();
+		}
+		if (arrival) {
+			var wpt = str[str.length - 1];
+			$('#arrivalInput').val(wpt).change();
+		}
+	} else {
+		if (!isSkyvector && !isWaypoints) alert ("Invalid Waypoints Input");
+		else if (!isSkyvector) alert ("Invalid Skyvector Link");
+	}
 };
 
 ges.resetFlight = function () {
@@ -1370,9 +1381,9 @@ function toggleVNAV() {
 }
 
 function addWaypoint() {
-	route.length++;
-	var n = route.length;
-	route[route.length - 1] = [];
+	fmc.waypoints.route.length++;
+	var n = fmc.waypoints.route.length;
+	fmc.waypoints.route[fmc.waypoints.route.length - 1] = [];
 	$('<tr>')
 		.addClass('waypoint')
 		.append(
@@ -1394,12 +1405,12 @@ function addWaypoint() {
 						var coords = getCoords(n);
 						var index = $(this).parents().eq(2).index() - 1;
 						if (!coords) {
-							route[index][0] = n;
-							route[index][4] = false;
+							fmc.waypoints.route[index][0] = n;
+							fmc.waypoints.route[index][4] = false;
 						} else {
 							$(this).parents().eq(2).children('.position').children('div').children('.lat').val(coords[0]);
 							$(this).parents().eq(2).children('.position').children('div').children('.lon').val(coords[1]);
-							route[index] = [n, coords[0], coords[1],/* TODO What is this?*/ , true];
+							fmc.waypoints.route[index] = [n, coords[0], coords[1], undefined, true];
 						}
 					})
 				)
@@ -1421,8 +1432,8 @@ function addWaypoint() {
 					})
 					.change(function() {
 						var index = $(this).parents().eq(2).index() - 1;
-						route[index][1] = formatCoords($(this).val());
-						route[index][4] = false;
+						fmc.waypoints.route[index][1] = formatCoords($(this).val());
+						fmc.waypoints.route[index][4] = false;
 					}), $('<input>')
 					.addClass('input-medium lon')
 					.css('width', '80px')
@@ -1432,8 +1443,8 @@ function addWaypoint() {
 					})
 					.change(function() {
 						var index = $(this).parents().eq(2).index() - 1;
-						route[index][2] = formatCoords($(this).val());
-						route[index][4] = false;
+						fmc.waypoints.route[index][2] = formatCoords($(this).val());
+						fmc.waypoints.route[index][4] = false;
 					})
 				)
 			)
@@ -1455,7 +1466,7 @@ function addWaypoint() {
 					})
 					.change(function() {
 						var index = $(this).parents().eq(2).index() - 1;
-						route[index][3] = Number($(this).val());
+						fmc.waypoints.route[index][3] = Number($(this).val());
 					})
 				)
 			)
@@ -1513,7 +1524,7 @@ function addWaypoint() {
 
 function removeWaypoint(n) {
 	$('#waypoints tr:nth-child(' + (n + 1) + ')').remove();
-	route.splice((n - 1), 1);
+	fmc.waypoints.route.splice((n - 1), 1);
 	if (nextWaypoint == n) {
 		nextWaypoint = null;
 	}
@@ -1521,9 +1532,9 @@ function removeWaypoint(n) {
 
 function shiftWaypoint(r, n, d) {
 	console.log("Waypoint #" + n + " moved " + d);
-	if (!(d == "up" && n == 1 || d == "down" && n == route.length)) {
+	if (!(d == "up" && n == 1 || d == "down" && n == fmc.waypoints.route.length)) {
 		if (d == "up") {
-			route.move(n - 1, n - 2);
+			fmc.waypoints.route.move(n - 1, n - 2);
 			r.insertBefore(r.prev());
 			if (nextWaypoint == n) {
 				nextWaypoint = n - 1;
@@ -1531,7 +1542,7 @@ function shiftWaypoint(r, n, d) {
 				nextWaypoint = n + 1;
 			}
 		} else {
-			route.move(n - 1, n);
+			fmc.waypoints.route.move(n - 1, n);
 			r.insertAfter(r.next());
 			if (nextWaypoint == n) {
 				nextWaypoint = n + 1;
