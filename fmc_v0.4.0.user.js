@@ -34,6 +34,8 @@ window.fmc = {
 		nextWaypoint: "",
 		makeArray: function() {
 			var result = [];
+			var departureVal = $('#departureInput').val();
+			if (departureVal) result.push(departureVal);
 			$('.waypoint td:first-child div > input').each(function() {
 				result.push($(this).val());
 			});
@@ -167,7 +169,7 @@ function updateVNAV() {
 
 // Updates plane's flight log
 var logTimer = setInterval(updateLog, 120000);
-function updateLog(other) {
+function updateLog (other) {
 	if (!ges.pause) {
 		var spd = Math.round(ges.aircraft.animationValue.ktas);
 		var hdg = Math.round(ges.aircraft.animationValue.heading360);
@@ -224,9 +226,9 @@ function checkGear() {
 // Helper method to check for flaps target
 var flapsTimer = setInterval(checkFlaps, 5000);
 function checkFlaps() {
-    if (ges.aircraft.animationValue.flapsPosition !== ges.aircraft.animationValue.flapsTarget) {
-        updateLog('Flaps set to ' + ges.aircraft.animationValue.flapsTarget);
-    }
+	if (ges.aircraft.animationValue.flapsPosition !== ges.aircraft.animationValue.flapsTarget) {
+		updateLog('Flaps set to ' + ges.aircraft.animationValue.flapsTarget);
+	}
 }
 
 // Helper method to check for overspeed under 10000 feet
@@ -242,7 +244,7 @@ function checkSpeed() {
 	else speedTimer = setInterval(checkSpeed, 30000);
 }
 
-// Updates plane's phase of flying: climb, cruise, descent
+// Updates plane's phase of flying: climb, cruise, or descent
 function updatePhase() {
 	var alt = 100 * Math.round(ges.aircraft.animationValue.altitude / 100);
 	if (ges.aircraft.groundContact) {
@@ -260,7 +262,7 @@ function updatePhase() {
 }
 
 // Prints plane's progress to the UI
-function print(flightdist, nextdist, times) {
+function print (flightdist, nextdist, times) {
 	for (var i = 0; i < times.length; i++) {
 		times[i] = formatTime(times[i]);
 	}
@@ -571,7 +573,7 @@ function getFlightParameters(aircraft) {
 }
 
 // Activate a waypoint
-function activateLeg(n) {
+function activateLeg (n) {
 	if (fmc.waypoints.nextWaypoint != n) {
 		if (n <= fmc.waypoints.route.length) {
 			fmc.waypoints.nextWaypoint = n;
@@ -599,24 +601,24 @@ function activateLeg(n) {
 // Returns the next waypoint that has an altitude restriction
 function getNextWaypointWithAltRestriction() {
 	for (var i = fmc.waypoints.nextWaypoint; i <= fmc.waypoints.route.length; i++) {
-		if (fmc.waypoints.route[i - 1][3]) return i;
+		if (!!fmc.waypoints.route[i - 1][3]) return i;
 	}
 }
 
 // Helper method for log, formats the time
-function formatTime(time) {
+function formatTime (time) {
 	time[1] = checkZeros(time[1]);
 	return time[0] + ":" + time[1];
 }
 
 // Helper method, format zeros
-function checkZeros(i) {
+function checkZeros (i) {
 	if (i < 10) i = "0" + i;
 	return i;
 }
 
 // Helper method for log, check the eligibility of the time
-function timeCheck(h, m) {
+function timeCheck (h, m) {
 	if (m >= 60) {
 		m -= 60;
 		h++;
@@ -626,7 +628,7 @@ function timeCheck(h, m) {
 }
 
 // Gets "Estimated Time En-Route"
-function getete(d, a) {
+function getete (d, a) {
 	var hours = d / ges.aircraft.animationValue.ktas;
 	var h = parseInt(hours);
 	var m = Math.round(60 * (hours - h));
@@ -635,7 +637,7 @@ function getete(d, a) {
 }
 
 // Gets "Estimated Time of Arrival"
-function geteta(hours, minutes) {
+function geteta (hours, minutes) {
 	var date = new Date();
 	var h = date.getHours();
 	var m = date.getMinutes();
@@ -645,7 +647,7 @@ function geteta(hours, minutes) {
 }
 
 // Returns the full route distance, with waypoints
-function getRouteDistance(end) {
+function getRouteDistance (end) {
 	var loc = ges.aircraft.llaLocation || [0, 0, 0];
 	var start = fmc.waypoints.nextWaypoint || 0;
 	var total;
@@ -746,58 +748,55 @@ fmc.waypoints.formatCoords = function (a) {
 
 // Turn a skyvector link or a normal waypoint input (seperated by spaces) to waypoints
 fmc.waypoints.toRoute = function (url) {
-	if (!fmc.waypoints.input) fmc.waypoints.loadFromSave();
+	var index = url.indexOf('fpl=');
+	var isSkyvector = url.indexOf('skyvector.com') !== -1 && index !== -1;
+	var isWaypoints = true;
+	var departure = $('#wptDeparture')[0].checked;
+	var arrival = $('#wptArrival')[0].checked;
+	var n = $('#waypoints tbody tr').length - 1;
+	var a;
+	var str = [];
+
+	if (isSkyvector) str = url.substring(index + 4).trim().split(" ");
 	else {
-		var index = url.indexOf('fpl=');
-		var isSkyvector = url.indexOf('skyvector.com') !== -1 && index !== -1;
-		var isWaypoints = true;
-		var departure = $('#wptDeparture')[0].checked;
-		var arrival = $('#wptArrival')[0].checked;
-		var n = $('#waypoints tbody tr').length - 1;
-		var a;
-		var str = [];
+		str = url.trim().toUpperCase().split(" ");
+		for (var i = 0; i < str.length; i++)
+			if (str[i].length > 5 || str[i].length < 1 || !(/^\w+$/.test(str[i])))
+				isWaypoints = false;
+	}
 
-		if (isSkyvector) str = url.substring(index + 4).trim().split(" ");
-		else {
-			str = url.trim().toUpperCase().split(" ");
-			for (var i = 0; i < str.length; i++)
-				if (str[i].length > 5 || str[i].length < 1 || !(/^\w+$/.test(str[i])))
-					isWaypoints = false;
+	if (isSkyvector || isWaypoints) {
+		for (var i = 0; i < n; i++) {
+			fmc.waypoints.removeWaypoint(1);
 		}
+		fmc.waypoints.route = [];
 
-		if (isSkyvector || isWaypoints) {
-			for (var i = 0; i < n; i++) {
-				fmc.waypoints.removeWaypoint(1);
-			}
-			fmc.waypoints.route = [];
-
-			if (departure) {
-				var wpt = str[0];
-				$('#departureInput').val(wpt).change();
-				a = 1;
-			} else {
-				a = 0;
-				$('#departureInput').val("").change();
-			}
-			for (var i = 0; i + a < str.length; i++) {
-				fmc.waypoints.addWaypoint();
-				var wpt = str[i + a];
-				$('#waypoints input.wpt:eq(' + i + ')').val(wpt).change();
-			}
-			if (arrival) {
-				var wpt = str[str.length - 1];
-				$('#arrivalInput').val(wpt).change();
-			}
+		if (departure) {
+			var wpt = str[0];
+			$('#departureInput').val(wpt).change();
+			a = 1;
 		} else {
-			if (!isWaypoints) {
-				if (!isSkyvector) alert("Invalid Skyvector Link");
-				else alert("Invalid Waypoints Input");
-			}
+			a = 0;
+			$('#departureInput').val("").change();
+		}
+		for (var i = 0; i + a < str.length; i++) {
+			fmc.waypoints.addWaypoint();
+			var wpt = str[i + a];
+			$('#waypoints input.wpt:eq(' + i + ')').val(wpt).change();
+		}
+		if (arrival) {
+			var wpt = str[str.length - 1];
+			$('#arrivalInput').val(wpt).change();
+		}
+	} else {
+		if (!isWaypoints) {
+			if (!isSkyvector) alert("Invalid Skyvector Link");
+			else alert("Invalid Waypoints Input");
 		}
 	}
 };
 
-
+// Adds waypoint input field
 fmc.waypoints.addWaypoint = function() {
 	var waypoints = fmc.waypoints;
 	waypoints.route.length++;
@@ -974,8 +973,8 @@ fmc.waypoints.loadFromSave = function() {
 		}
 		waypoints.route = [];
 		
-		$('#departureInput').val(arr[0]).change();
-		$('#arrivalInput').val(arr[1]).change();
+		if ($('#departureInput').val()) $('#departureInput').val(arr[0]).change();
+		if ($('#arrivalInput').val()) $('#arrivalInput').val(arr[1]).change();
 		
 		for (var i = 0; i < route.length; i++) {
 			waypoints.addWaypoint();
@@ -989,9 +988,15 @@ fmc.waypoints.loadFromSave = function() {
 			if (route[i][3]) // If there is an altitude restriction
 				$('#waypoints input.alt:eq(' + i + ')').val(route[i][3]).change();
 		}
+		
+		// JSON.stringify turns undefined into null; this loop turns it back
+		fmc.waypoints.route.forEach(function (wpt) {
+			if (!wpt[3] || wpt[3] == null) wpt[3] = undefined;
+		});
 	} else alert ("You did not save the waypoints or you cleared the browser's cache");
 };
 
+// Adds a confirm window to prevent accidental reset
 ges.resetFlight = function() {
 	if (window.confirm('Reset Flight?')) {
 		if (ges.lastFlightCoordinates) {
@@ -1001,6 +1006,7 @@ ges.resetFlight = function() {
 	}
 };
 
+// Tracks pause event
 ges.togglePause = function() {
 	if (!ges.pause) {
 		updateLog('Flight paused');
@@ -1237,6 +1243,14 @@ $('<div>')
 														fmc.waypoints.saveData();
 													})
 													.css('margin-right', '3px')
+											,	$('<button>')
+													.addClass('btn btn-inverse')
+													.attr('type', 'button')
+													.text('Load Route  ')
+													.append( $('<i>').addClass('icon-play icon-white'))
+													.click(function() {
+														fmc.waypoints.loadFromSave();
+													})
 												)
 											)
 										)
@@ -1244,13 +1258,7 @@ $('<div>')
 								)
 							)
 						)
-
-					// PERFORMANCE TAB
-				,	$('<div>')
-						.addClass('tab-pane')
-						.attr('id', 'perf')
-						.append( $('<p>PERF</p>'))
-
+						
 					// ARRIVAL TAB
 				,	$('<div>')
 						.addClass('tab-pane')
@@ -1269,9 +1277,9 @@ $('<div>')
 											.addClass('add-on')
 											.text('TOD Dist.')
 									,	$('<input>')
-											.addClass('gefs-stopPropagation')
 											.attr('id', 'todInput')
 											.attr('type', 'number')
+											.attr('min', '0')
 											.attr('placeholder', 'nm')
 											.css('width', '38px')
 											.change(function() {
@@ -1314,10 +1322,9 @@ $('<div>')
 											.addClass('add-on')
 											.text('Arrival Airport Altitude')
 									,	$('<input>')
-											.addClass('input-medium')
 											.attr('type','number')
 											.attr('placeholder','ft.')
-											.css('width','50px')
+											.css('width','55px')
 											.change(function() {
 												arrivalAlt = Number($(this).val());
 											})
@@ -1359,8 +1366,10 @@ $('<div>')
 											.addClass('add-on')
 											.text('Cruise Alt.')
 									,	$('<input>')
-											.addClass('gefs-stopPropagation')
 											.attr('type', 'number')
+											.attr('step', '100')
+											.attr('min', '0')
+											.attr('max', '100000')
 											.attr('placeholder', 'ft')
 											.css('width', '80px')
 											.change(function() {
@@ -1505,6 +1514,7 @@ $('<div>')
 						.addClass('tab-pane')
 						.attr('id', 'load')
 						.append(
+						$('<th>Enter a SkyVector link or waypoints seperated by spaces</th>'),
 						$('<form>')
 							.attr('action','javascript:fmc.waypoints.toRoute(fmc.waypoints.input);')
 							.addClass('form-horizontal')
@@ -1535,12 +1545,6 @@ $('<div>')
 								)
 							)
 						)
-				
-					// Save tab	WIP
-				,	$('<div>')
-						.addClass('tab-pane')
-						.attr('id','save')
-						.append('<textarea>')
 						
 					// Log tab
 				,	$('<div>')
@@ -1602,7 +1606,7 @@ $('<div>')
 ,	$('<iframe frame-border="no" class="gefs-shim-iframe"></iframe>')
 	).appendTo('body');
 
-
+// External distance indicator
 $('<div>')
 	.addClass('setup-section')
 	.css('padding-bottom','0px')
@@ -1624,15 +1628,16 @@ $('<div>')
 		)
 	).appendTo('td.gefs-f-standard');
 	
-		
+// Hides backdrop for the modal	
 $('#fmcModal').modal({
 	backdrop: false,
 	show: false
 });
 
-// Initialize to 1 waypoints input field
+// Initialize to 1 waypoint input field
 fmc.waypoints.addWaypoint();
 
+// Enables VNAV function
 function toggleVNAV() {
 	if (VNAV) {
 		VNAV = false;
