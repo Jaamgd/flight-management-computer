@@ -32,7 +32,7 @@ window.fmc = {
 		input: "",
 		route: [],
 		nextWaypoint: "",
-		makeArray: function() {
+		makeFixesArray: function() {
 			var result = [];
 			var departureVal = $('#departureInput').val();
 			if (departureVal) result.push(departureVal);
@@ -44,8 +44,16 @@ window.fmc = {
 			
 			return result;
 		},
-		toString: function() {
-			return fmc.waypoints.makeArray().join(" ");
+		toFixesString: function() {
+			return fmc.waypoints.makeFixesArray().join(" ");
+		}, 
+		toRouteString: function() { // @TODO make loadFromSave take an argument (optional) of this format
+			return JSON.stringify ([
+				$('#departureInput').val(), 
+				$('#arrivalInput').val(), 
+				$('#flightNumInput').val(), 
+				fmc.waypoints.route
+			]); // .replace(/null/g, 'undefined');
 		}
 	}
 };
@@ -954,7 +962,7 @@ fmc.waypoints.saveData = function() {
 	localStorage.removeItem('fmcWaypoints');
 	if (fmc.waypoints.route) {
 		var route = fmc.waypoints.route;
-		var arr = JSON.stringify([$('#departureInput').val(), $('#arrivalInput').val(), route]);
+		var arr = JSON.stringify([$('#departureInput').val(), $('#arrivalInput').val(), $('#flightNumInput').val(), route]);
 		localStorage.setItem ("fmcWaypoints", arr);
 	} else alert ("There is no route to save");
 };
@@ -966,15 +974,16 @@ fmc.waypoints.loadFromSave = function() {
 	localStorage.removeItem('fmcWaypoints');
 	
 	if (arr) {
-		var route = arr[2];
+		var route = arr[3];
 		var n = $('#waypoints tbody tr').length - 1;
 		for (var i = 0; i < n; i++) {
 			waypoints.removeWaypoint(1);
 		}
 		waypoints.route = [];
 		
-		if ($('#departureInput').val()) $('#departureInput').val(arr[0]).change();
-		if ($('#arrivalInput').val()) $('#arrivalInput').val(arr[1]).change();
+		if (arr[0]) $('#departureInput').val(arr[0]).change();
+		if (arr[1]) $('#arrivalInput').val(arr[1]).change();
+		if (arr[2]) $('#flightNumInput').val(arr[2]).change();
 		
 		for (var i = 0; i < route.length; i++) {
 			waypoints.addWaypoint();
@@ -1171,6 +1180,7 @@ $('<div>')
 													.addClass('add-on')
 													.text('Flight #'), $('<input>')
 													.addClass('input-mini')
+													.attr('id', 'flightNumInput')
 													.css('width', '80px')
 													.attr('type', 'text')
 												)
@@ -1237,8 +1247,8 @@ $('<div>')
 												$('<button>')
 													.addClass('btn btn-inverse')
 													.attr('type', 'button')
-													.text('Save Route  ')
-													.append( $('<i>').addClass('icon-hdd icon-white'))
+													.text('Save Route ')
+													.append( $('<i>').addClass('icon-file icon-white'))
 													.click(function() {
 														fmc.waypoints.saveData();
 													})
@@ -1246,8 +1256,8 @@ $('<div>')
 											,	$('<button>')
 													.addClass('btn btn-inverse')
 													.attr('type', 'button')
-													.text('Load Route  ')
-													.append( $('<i>').addClass('icon-play icon-white'))
+													.text('Retrieve Route ')
+													.append( $('<i>').addClass('icon-refresh icon-white'))
 													.click(function() {
 														fmc.waypoints.loadFromSave();
 													})
