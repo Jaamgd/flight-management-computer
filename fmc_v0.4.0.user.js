@@ -13,7 +13,11 @@
 // AP++ v0.8.1 with AIRAC 1505, for testing purposes
 $('<script type = "text/javascript" src = "https://dl.dropboxusercontent.com/s/jyl2u91isr94oc6/app.user.js">').appendTo('body');
 
-// Publicly accessible methods and variables
+// Global variables/constants
+window.feetToNM = 1 / 6076;
+window.nmToFeet = 6076;
+
+// fmc library, publicly accessible methods and variables
 window.fmc = {
 	math: {
 		toRadians: function (degrees) {
@@ -22,28 +26,24 @@ window.fmc = {
 		toDegrees: function (radians) {
 			return radians * 180 / Math.PI;
 		},
-		earthRadiusNM: 3440.06,
-		feetToNM: 1 / 6076,
-		nmToFeet: 6076
+		earthRadiusNM: 3440.06
 	},
 	waypoints: {
 		input: "",
 		route: [],
-		toArray: function () {
+		nextWaypoint: "",
+		makeArray: function() {
 			var result = [];
-			for (var i = 0; i < $('.waypoint').length; i++) {
-				result.push($('.waypoint:eq(' + i + ') td:first-child div > input').val());
-			}
-			if ($('#arrivalInput').val() !== "")
-				result.push($('#arrivalInput').val());
+			$('.waypoint td:first-child div > input').each(function() {
+				result.push($(this).val());
+			});
+			var arrivalVal = $('#arrivalInput').val();
+			if (arrivalVal) result.push(arrivalVal);
+			
 			return result;
 		},
-		toString: function () {
-			var arr = fmc.waypoints.toArray();
-			var result = "";
-			for (var i = 0; i < arr.length; i++)
-				result = result + arr[i] + " ";
-			return result.trim();
+		toString: function() {
+			return fmc.waypoints.makeArray().join(" ");
 		}
 	}
 };
@@ -51,13 +51,12 @@ window.fmc = {
 var tod;
 var VNAV = false;
 var arrival = [];
-var nextWaypoint;
 var cruise;
-var date = new Date();
 var phase = "climb";
 var todCalc = false;
 var arrivalAlt = 0;
 
+// Updates the plane's progress: time and location
 var progTimer = setInterval(updateProgress, 5000);
 function updateProgress() {
 	var lat1 = ges.aircraft.llaLocation[0] || 0;
@@ -65,7 +64,7 @@ function updateProgress() {
 	var lat2 = arrival[1] || 0;
 	var lon2 = arrival[2] || 0;
 	var times = ["--", "--", "--", "--", "--"]; // flightete, flighteta, todete, todeta, nextete
-	var nextdist = getRouteDistance(nextWaypoint);
+	var nextdist = getRouteDistance(fmc.waypoints.nextWaypoint);
 	if (nextdist < 10) {
 		nextdist = (Math.round(10 * nextdist)) / 10;
 	} else nextdist = Math.round(nextdist);
@@ -89,17 +88,19 @@ function updateProgress() {
 	print(flightdist, nextdist, times);
 }
 
+// Controls LNAV, plane's lateral navigation
 var LNAVTimer = setInterval(updateLNAV, 5000);
 function updateLNAV() {
-	var d = getRouteDistance(nextWaypoint);
+	var d = getRouteDistance(fmc.waypoints.nextWaypoint);
 	if (d <= getTurnDistance(60)) {
-		activateLeg(nextWaypoint + 1);
+		activateLeg(fmc.waypoints.nextWaypoint + 1);
 	}
 	clearInterval(LNAVTimer);
 	if (d < ges.aircraft.animationValue.kias / 60) LNAVTimer = setInterval(updateLNAV, 500);
 	else LNAVTimer = setInterval(updateLNAV, 30000);
 }
 
+// Controls VNAV, plane's vertical navigation
 var VNAVTimer;
 function updateVNAV() {
 	var aircraft = ges.aircraft.name;
@@ -164,6 +165,7 @@ function updateVNAV() {
 	updatePhase();
 }
 
+// Updates plane's flight log
 var logTimer = setInterval(updateLog, 120000);
 function updateLog(other) {
 	if (!ges.pause) {
@@ -173,6 +175,7 @@ function updateLog(other) {
 		var fps = ges.debug.fps;
 		var lat = (Math.round(10000*ges.aircraft.llaLocation[0]))/10000;
 		var lon = (Math.round(10000*ges.aircraft.llaLocation[1]))/10000;
+		var date = new Date();
 		var h = date.getUTCHours();
 		var m = date.getUTCMinutes();
 		var time = formatTime(timeCheck(h, m));
@@ -182,19 +185,19 @@ function updateLog(other) {
 			.append(
 			$('<td>'+time+'</td>')
 				.css('padding','0px 10px 0px 10px')
-		,   $('<td>'+spd+'</td>')
+		,	$('<td>'+spd+'</td>')
 				.css('padding','0px 10px 0px 10px')
-		,   $('<td>'+hdg+'</td>')
+		,	$('<td>'+hdg+'</td>')
 				.css('padding','0px 10px 0px 10px')
-		,   $('<td>'+alt+'</td>')
+		,	$('<td>'+alt+'</td>')
 				.css('padding','0px 10px 0px 10px')
-		,   $('<td>'+lat+'</td>')
+		,	$('<td>'+lat+'</td>')
 				.css('padding','0px 10px 0px 10px')
-		,   $('<td>'+lon+'</td>')
+		,	$('<td>'+lon+'</td>')
 				.css('padding','0px 10px 0px 10px')
-		,   $('<td>'+fps+'</td>')
+		,	$('<td>'+fps+'</td>')
 				.css('padding','0px 10px 0px 10px')
-		,   $('<td>'+other+'</td>')
+		,	$('<td>'+other+'</td>')
 				.css('padding','0px 10px 0px 10px')
 			).appendTo('#logData');
 	}
@@ -205,6 +208,7 @@ function updateLog(other) {
 }
 
 // @TODO check for keydown events
+// Helper method to check for gear retraction and extension
 var gearTimer = setInterval(checkGear, 12000);
 function checkGear() {
 	if (ges.aircraft.animationValue.gearPosition !== ges.aircraft.animationValue.gearTarget) {
@@ -216,6 +220,16 @@ function checkGear() {
 	else gearTimer = setInterval(checkGear, 60000);
 }
 
+// @TODO check for keydown events
+// Helper method to check for flaps target
+var flapsTimer = setInterval(checkFlaps, 5000);
+function checkFlaps() {
+    if (ges.aircraft.animationValue.flapsPosition !== ges.aircraft.animationValue.flapsTarget) {
+        updateLog('Flaps set to ' + ges.aircraft.animationValue.flapsTarget);
+    }
+}
+
+// Helper method to check for overspeed under 10000 feet
 var speedTimer = setInterval(checkSpeed, 15000);
 function checkSpeed() {
 	var kcas = ges.aircraft.animationValue.kcas;
@@ -228,6 +242,7 @@ function checkSpeed() {
 	else speedTimer = setInterval(checkSpeed, 30000);
 }
 
+// Updates plane's phase of flying: climb, cruise, descent
 function updatePhase() {
 	var alt = 100 * Math.round(ges.aircraft.animationValue.altitude / 100);
 	if (ges.aircraft.groundContact) {
@@ -244,6 +259,7 @@ function updatePhase() {
 	}
 }
 
+// Prints plane's progress to the UI
 function print(flightdist, nextdist, times) {
 	for (var i = 0; i < times.length; i++) {
 		times[i] = formatTime(times[i]);
@@ -262,16 +278,20 @@ function print(flightdist, nextdist, times) {
 	$('#nextETE').text(times[4]);
 }
 
+// Gets each plane's flight parameters, for VNAV
 function getFlightParameters(aircraft) {
 	var spd, vs;
 	var gndElev = ges.groundElevation * metersToFeet;
 	var a = ges.aircraft.animationValue.altitude;
 	var isMach = $('#Qantas94Heavy-ap-spd span:last-child').text().trim() === 'M.';
+	var switchMode = function() {
+		$('#Qantas94Heavy-ap-spd span:last-child').click();
+	};
 
 	// CLIMB
 	if (phase == "climb") {
 		if (a > 1500 + gndElev && a <= 4000 + gndElev) {
-			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+			if (isMach) switchMode();
 			switch (aircraft) {
 			case "a380":
 			case "md11":
@@ -292,7 +312,7 @@ function getFlightParameters(aircraft) {
 				break;
 			}
 		} else if (a > 4000 + gndElev && a <= 10000 + gndElev) {
-			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+			if (isMach) switchMode();
 			switch (aircraft) {
 			case "a380":
 			case "md11":
@@ -313,7 +333,7 @@ function getFlightParameters(aircraft) {
 				break;
 			}
 		} else if (a > 10000 + gndElev && a <= 18000) {
-			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+			if (isMach) switchMode();
 			switch (aircraft) {
 			case "a380":
 			case "md11":
@@ -337,7 +357,7 @@ function getFlightParameters(aircraft) {
 				break;
 			}
 		} else if (a > 18000 && a <= 24000) {
-			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+			if (isMach) switchMode();
 			switch (aircraft) {
 			case "concorde":
 			case "a380":
@@ -364,7 +384,7 @@ function getFlightParameters(aircraft) {
 				break;
 			}
 		} else if (a > 24000 && a <= 26000) {
-			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+			if (isMach) switchMode();
 			switch (aircraft) {
 			case "a380":
 			case "161":
@@ -376,7 +396,7 @@ function getFlightParameters(aircraft) {
 				break;
 			}
 		} else if (a > 26000 && a <= 28000) {
-			if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+			if (isMach) switchMode();
 			switch (aircraft) {
 			case "md11":
 			case "162":
@@ -391,7 +411,7 @@ function getFlightParameters(aircraft) {
 				break;
 			}
 		} else if (a > 29500) {
-			if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+			if (!isMach) switchMode();
 			switch (aircraft) {
 			case "162":
 			case "166":
@@ -418,7 +438,7 @@ function getFlightParameters(aircraft) {
 			}
 		}
 		if (a > cruise - 100 && cruise > 18000) {
-			if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+			if (!isMach) switchMode();
 			switch (aircraft) {
 			case "162":
 			case "166":
@@ -453,11 +473,11 @@ function getFlightParameters(aircraft) {
 	// DESCENT
 	else if (phase == "descent") {
 		if (a > cruise - 700) {
-			if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+			if (!isMach) switchMode();
 			vs = -1000;
 		} else {
 			if (a > 45000) {
-				if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+				if (!isMach) switchMode();
 				switch (aircraft) {
 				case "concorde":
 					spd = 1.5;
@@ -467,7 +487,7 @@ function getFlightParameters(aircraft) {
 					break;
 				}
 			} else if (a > 30000 && a <= 45000) {
-				if (!isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+				if (!isMach) switchMode();
 				switch (aircraft) {
 				case "concorde":
 					vs = -3600;
@@ -496,7 +516,7 @@ function getFlightParameters(aircraft) {
 					break;
 				}
 			} else if (a > 18000 && a <= 30000) {
-				if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+				if (isMach) switchMode();
 				switch (aircraft) {
 				case "162":
 				case "166":
@@ -523,7 +543,7 @@ function getFlightParameters(aircraft) {
 					break;
 				}
 			} else if (a > 12000 + gndElev && a <= 18000) {
-				if (isMach) $('#Qantas94Heavy-ap-spd span:last-child').click();
+				if (isMach) switchMode();
 				switch (aircraft) {
 				case "a380":
 				case "md11":
@@ -550,11 +570,12 @@ function getFlightParameters(aircraft) {
 	return [spd, vs];
 }
 
+// Activate a waypoint
 function activateLeg(n) {
-	if (nextWaypoint != n) {
+	if (fmc.waypoints.nextWaypoint != n) {
 		if (n <= fmc.waypoints.route.length) {
-			nextWaypoint = n;
-			var wpt = fmc.waypoints.route[nextWaypoint - 1];
+			fmc.waypoints.nextWaypoint = n;
+			var wpt = fmc.waypoints.route[fmc.waypoints.nextWaypoint - 1];
 			if (wpt[3]) {
 				$('#Qantas94Heavy-ap-icao > input').val(wpt[0]).change();
 			} else {
@@ -570,34 +591,31 @@ function activateLeg(n) {
 		console.log('Waypoint activated');
 	} else {
 		$('.activate').removeClass('btn-warning');
-		nextWaypoint = undefined;
+		fmc.waypoints.nextWaypoint = undefined;
 		$('#Qantas94Heavy-ap-icao > input').val('').change();
 	}
 }
 
+// Returns the next waypoint that has an altitude restriction
 function getNextWaypointWithAltRestriction() {
-	for (var i = nextWaypoint; i <= fmc.waypoints.route.length; i++) {
+	for (var i = fmc.waypoints.nextWaypoint; i <= fmc.waypoints.route.length; i++) {
 		if (fmc.waypoints.route[i - 1][3]) return i;
 	}
 }
 
-fmc.math.getGroundSpeed = function() {
-	var tas = ges.aircraft.animationValue.ktas;
-	var vs = (60 * ges.aircraft.animationValue.climbrate) * fmc.math.feetToNM;
-	console.log("tas: " + tas + ", vs: " + vs);
-	return Math.sqrt(Math.pow(tas, 2) - Math.pow(vs, 2));
-};
-
+// Helper method for log, formats the time
 function formatTime(time) {
 	time[1] = checkZeros(time[1]);
 	return time[0] + ":" + time[1];
 }
 
+// Helper method, format zeros
 function checkZeros(i) {
 	if (i < 10) i = "0" + i;
 	return i;
 }
 
+// Helper method for log, check the eligibility of the time
 function timeCheck(h, m) {
 	if (m >= 60) {
 		m -= 60;
@@ -607,6 +625,7 @@ function timeCheck(h, m) {
 	return [h, m];
 }
 
+// Gets "Estimated Time En-Route"
 function getete(d, a) {
 	var hours = d / ges.aircraft.animationValue.ktas;
 	var h = parseInt(hours);
@@ -615,7 +634,9 @@ function getete(d, a) {
 	return timeCheck(h, m);
 }
 
+// Gets "Estimated Time of Arrival"
 function geteta(hours, minutes) {
+	var date = new Date();
 	var h = date.getHours();
 	var m = date.getMinutes();
 	h += hours;
@@ -623,11 +644,12 @@ function geteta(hours, minutes) {
 	return timeCheck(h, m);
 }
 
+// Returns the full route distance, with waypoints
 function getRouteDistance(end) {
 	var loc = ges.aircraft.llaLocation || [0, 0, 0];
-	var start = nextWaypoint || 0;
+	var start = fmc.waypoints.nextWaypoint || 0;
 	var total;
-	if (fmc.waypoints.route.length === 0 || !nextWaypoint) {
+	if (fmc.waypoints.route.length === 0 || !fmc.waypoints.nextWaypoint) {
 		total = fmc.math.getDistance(loc[0], loc[1], arrival[1], arrival[2]);
 	} else {
 		total = fmc.math.getDistance(loc[0], loc[1], fmc.waypoints.route[start - 1][1], fmc.waypoints.route[start - 1][2]);
@@ -641,7 +663,8 @@ function getRouteDistance(end) {
 	return total;
 }
 
-function getTargetDist(deltaAlt) {
+// Returns the distance to start descent based on the altitude difference to the next waypoint
+function getTargetDist (deltaAlt) {
 	var targetDist;
 	if (deltaAlt < 0) {
 		targetDist = deltaAlt / -1000 * 3.4;
@@ -651,33 +674,7 @@ function getTargetDist(deltaAlt) {
 	return targetDist;
 }
 
-fmc.math.getClimbrate = function (deltaAlt, nextDist) {
-	var gs = fmc.math.getGroundSpeed();
-	var factor = fmc.math.nmToFeet;
-	var vs = 100 * Math.round((gs * (deltaAlt / (nextDist * factor)) * factor / 60) / 100);
-	return vs;
-};
-
-function getCoords(wpt) {
-	if (autopilot_pp.require('icaoairports')[wpt]) {
-		return autopilot_pp.require('icaoairports')[wpt];
-	} else if (autopilot_pp.require('waypoints')[wpt]) {
-		return autopilot_pp.require('waypoints')[wpt];
-	} else return false;
-}
-
-function formatCoords(a) {
-	if (a.indexOf(' ') > -1) {
-		var array = a.split(' ');
-		var d = Number(array[0]);
-		var m = Number(array[1]) / 60;
-		var coords;
-		if (d < 0) coords = d - m;
-		else coords = d + m;
-		return coords;
-	} else return Number(a);
-}
-
+// Returns the turning distance for an aircraft to be on course
 function getTurnDistance(angle) {
 	var v = ges.aircraft.animationValue.kcas;
 	var r = 0.107917 * Math.pow(Math.E, 0.0128693 * v);
@@ -685,6 +682,22 @@ function getTurnDistance(angle) {
 	return r * Math.tan(a / 2) + 0.20;
 }
 
+// Computes and returns the ground speed of the aircraft
+fmc.math.getGroundSpeed = function() {
+	var tas = ges.aircraft.animationValue.ktas;
+	var vs = (60 * ges.aircraft.animationValue.climbrate) * feetToNM;
+	console.log("tas: " + tas + ", vs: " + vs);
+	return Math.sqrt(tas * tas - vs * vs);
+};
+
+// Computes and returns the climb rate of the aircraft
+fmc.math.getClimbrate = function (deltaAlt, nextDist) {
+	var gs = fmc.math.getGroundSpeed();
+	var vs = 100 * Math.round((gs * (deltaAlt / (nextDist * nmToFeet)) * nmToFeet / 60) / 100);
+	return vs;
+};
+
+// Returns the distance between two sets of coordinates
 fmc.math.getDistance = function (lat1, lon1, lat2, lon2) {
 	var math = fmc.math;
 	var dlat = math.toRadians(lat2 - lat1);
@@ -696,6 +709,7 @@ fmc.math.getDistance = function (lat1, lon1, lat2, lon2) {
 	return math.earthRadiusNM * c;
 };
 
+// Retuns the bearing between two coordinates
 fmc.math.getBearing = function (lat1, lon1, lat2, lon2) {
 	var math = fmc.math;
 	lat1 = math.toRadians(lat1);
@@ -708,682 +722,87 @@ fmc.math.getBearing = function (lat1, lon1, lat2, lon2) {
 	return brng;
 };
 
+// Access autopilot_pp library and find the coordinates for the waypoints
+fmc.waypoints.getCoords = function (wpt) {
+	if (autopilot_pp.require('icaoairports')[wpt]) {
+		return autopilot_pp.require('icaoairports')[wpt];
+	} else if (autopilot_pp.require('waypoints')[wpt]) {
+		return autopilot_pp.require('waypoints')[wpt];
+	} else return false;
+};
+
+// Helper method, format the coordinates
+fmc.waypoints.formatCoords = function (a) {
+	if (a.indexOf(' ') > -1) {
+		var array = a.split(' ');
+		var d = Number(array[0]);
+		var m = Number(array[1]) / 60;
+		var coords;
+		if (d < 0) coords = d - m;
+		else coords = d + m;
+		return coords;
+	} else return Number(a);
+};
+
+// Turn a skyvector link or a normal waypoint input (seperated by spaces) to waypoints
 fmc.waypoints.toRoute = function (url) {
-	var index = url.indexOf('fpl=')
-	var isSkyvector = url.indexOf('skyvector.com') !== -1 && index !== -1;
-	var isWaypoints = true;
-	var departure = $('#wptDeparture')[0].checked;
-	var arrival = $('#wptArrival')[0].checked;
-	var n = $('#waypoints tbody tr').length - 1;
-	var a;
-	var str = [];
-
-	if (isSkyvector) str = url.substring(index + 4).trim().split(" ");
+	if (!fmc.waypoints.input) fmc.waypoints.loadFromSave();
 	else {
-		str = url.trim().toUpperCase().split(" ");
-		for (var i = 0; i < str.length; i++)
-			if (str[i].length > 5 || str[i].length < 1 || !str[i].match(/[a-z]/i))
-				isWaypoints = false;
-	}
+		var index = url.indexOf('fpl=');
+		var isSkyvector = url.indexOf('skyvector.com') !== -1 && index !== -1;
+		var isWaypoints = true;
+		var departure = $('#wptDeparture')[0].checked;
+		var arrival = $('#wptArrival')[0].checked;
+		var n = $('#waypoints tbody tr').length - 1;
+		var a;
+		var str = [];
 
-	if (isSkyvector || isWaypoints) {
-		for (var i = 0; i < n; i++) {
-			removeWaypoint(1);
+		if (isSkyvector) str = url.substring(index + 4).trim().split(" ");
+		else {
+			str = url.trim().toUpperCase().split(" ");
+			for (var i = 0; i < str.length; i++)
+				if (str[i].length > 5 || str[i].length < 1 || !(/^\w+$/.test(str[i])))
+					isWaypoints = false;
 		}
-		fmc.waypoints.route = [];
 
-		if (departure) {
-			var wpt = str[0];
-			$('#departureInput').val(wpt).change();
-			a = 1;
+		if (isSkyvector || isWaypoints) {
+			for (var i = 0; i < n; i++) {
+				fmc.waypoints.removeWaypoint(1);
+			}
+			fmc.waypoints.route = [];
+
+			if (departure) {
+				var wpt = str[0];
+				$('#departureInput').val(wpt).change();
+				a = 1;
+			} else {
+				a = 0;
+				$('#departureInput').val("").change();
+			}
+			for (var i = 0; i + a < str.length; i++) {
+				fmc.waypoints.addWaypoint();
+				var wpt = str[i + a];
+				$('#waypoints input.wpt:eq(' + i + ')').val(wpt).change();
+			}
+			if (arrival) {
+				var wpt = str[str.length - 1];
+				$('#arrivalInput').val(wpt).change();
+			}
 		} else {
-			a = 0;
-			$('#departureInput').val("").change();
-		}
-		for (var i = 0; i + a < str.length; i++) {
-			addWaypoint();
-			var wpt = str[i + a];
-			$('#waypoints input.wpt:eq(' + i + ')').val(wpt).change();
-		}
-		if (arrival) {
-			var wpt = str[str.length - 1];
-			$('#arrivalInput').val(wpt).change();
-		}
-	} else {
-		if (!isSkyvector && !isWaypoints) alert ("Invalid Waypoints Input");
-		else if (!isSkyvector) alert ("Invalid Skyvector Link");
-	}
-};
-
-ges.resetFlight = function () {
-	if (window.confirm('Reset Flight?')) {
-		if (ges.lastFlightCoordinates) {
-			ges.flyTo(ges.lastFlightCoordinates, true);
-			updateLog('Flight reset');
+			if (!isWaypoints) {
+				if (!isSkyvector) alert("Invalid Skyvector Link");
+				else alert("Invalid Waypoints Input");
+			}
 		}
 	}
 };
 
-ges.togglePause = function () {
-	if (!ges.pause) {
-		updateLog('Flight paused');
-		ges.doPause();
-	} else {
-		ges.undoPause();
-		updateLog('Flight resumed');
-	}
-};
 
-$('<button>')
-	.addClass('btn btn-success gefs-stopPropagation')
-	.attr('type', 'button')
-	.attr('data-toggle', 'modal')
-	.attr('data-target', '#fmcModal')
-	.css('margin-left','1px')
-	.text('FMC ')
-	.append( $('<i>').addClass('icon-list-alt'))
-	.appendTo('div.setup-section:nth-child(2)');
-
-// FMC modal UI
-$('<div>')
-	.addClass('modal hide gefs-stopPropagation')
-	.attr('data-backdrop', 'static')
-	.attr('id', 'fmcModal')
-	.attr('tabindex', '-1')
-	.attr('role', 'dialog')
-	.attr('aria-labelledby', 'fmcDialogBoxLabel')
-	.attr('aria-hidden', 'true')
-	.css('width', '590px')
-	.append(
-
-	// Dialog
-	$('<div>')
-		.addClass('modal-dialog')
-		.append(
-
-		// Content
-		$('<div>')
-			.addClass('modal-content')
-			.append(
-
-			// Header
-			$('<div>')
-				.addClass('modal-header')
-				.append(
-				$('<button>')
-					.addClass('close')
-					.attr('type', 'button')
-					.attr('data-dismiss', 'modal')
-					.attr('aria-hidden', 'true')
-					.text('\xD7') // &times;
-			,   $('<h3>')
-					.addClass('modal-title')
-					.attr('id', 'myModalLabel')
-					.css('text-align', 'center')
-					.text('Flight Management Computer')
-				)
-
-			// Body
-		,   $('<div>')
-				.addClass('modal-body')
-				.append(
-
-				// Navigation tabs
-				$('<ul>')
-					.addClass('nav nav-tabs')
-					.append(
-						$('<li>')
-							.addClass('active')
-							.append('<a href="#rte" data-toggle="tab">RTE</a>')
-					,   $('<li>')
-							.append('<a href="#arr" data-toggle="tab">DEP/ARR</a>')
-					/*,   $('<li>')
-							.append('<a href="#perf" data-toggle="tab">PERF</a>')*/
-					,   $('<li>')
-							.append('<a href="#vnav" data-toggle="tab">VNAV</a>')
-					,   $('<li>')
-							.append('<a href="#prog" data-toggle="tab">PROG</a>')
-					,   $('<li>')
-							.append('<a href="#load" data-toggle="tab">LOAD</a>')
-					/*,	$('<li>')
-							.append('<a href-"#save" data-toggle="tab">SAVE</a>')*/
-					,   $('<li>')
-							.append('<a href="#log" data-toggle="tab">LOG</a>')
-					)
-
-				// Tab Content
-			,   $('<div>')
-					.addClass('tab-content')
-					.css('padding', '5px')
-					.append(
-
-					// ROUTE TAB
-					$('<div>')
-						.addClass('tab-pane active')
-						.attr('id', 'rte')
-						.append(
-						$('<table>')
-							.append(
-							$('<tr>')
-								.append(
-								$('<table>')
-									.append(
-									$('<tr>')
-										.append(
-			
-										// Departure Airport input
-										$('<td>')
-											.css('padding', '5px')
-											.append(
-											$('<div>')
-												.addClass('input-prepend input-append')
-												.append(
-												$('<span>')
-													.addClass('add-on')
-													.text('Departure')
-											,   $('<input>')
-													.addClass('input-mini')
-													.attr('id','departureInput')
-													.attr('type', 'text')
-													.attr('placeholder', 'ICAO')
-												)
-											)
-		
-										// Arrival Airport input
-									,   $('<td>')
-											.css('padding', '5px')
-											.append(
-											$('<div>')
-												.addClass('input-prepend input-append')
-												.append(
-												$('<span>')
-													.addClass('add-on')
-													.text('Arrival')
-											,   $('<input>')
-													.addClass('input-mini')
-													.attr('type', 'text')
-													.attr('id','arrivalInput')
-													.attr('placeholder', 'ICAO')
-													.change(function() {
-														var wpt = $(this).val();
-														var coords = getCoords(wpt);
-														if (!coords) {
-															alert('Invalid Airport code');
-															this.val('');
-														}
-														else arrival = [wpt, coords[0], coords[1]];
-													})
-												)
-											)
-			
-										// Flight # input
-									,   $('<td>')
-											.css('padding', '5px')
-											.append(
-											$('<div>')
-												.addClass('input-prepend input-append')
-												.append(
-												$('<span>')
-													.addClass('add-on')
-													.text('Flight #'), $('<input>')
-													.addClass('input-mini')
-													.css('width', '80px')
-													.attr('type', 'text')
-												)
-											)
-										)
-									)
-								)
-							
-							// Waypoints list labels
-						,   $('<tr>')
-								.append(
-								$('<table>')
-									.attr('id','waypoints')
-									.append( 
-									$('<tr>')
-										.append(
-										$('<td>').append('<th>Waypoints</th>')
-									,   $('<td>').append('<th>Position</th>')
-									,   $('<td>').append('<th>Altitude</th>')
-									,   $('<td>').append('<th>Actions</th>')
-										)
-									)
-								)
-								
-							// Add Waypoint
-						,   $('<tr>')
-								.append(
-								$('<div>')
-									.attr('id','waypointsAddDel')
-									.append(
-									$('<table>')
-										.append(
-										$('<tr>')
-											.append(
-											$('<td>')
-												.append(
-												$('<button>')
-													.addClass('btn btn-primary')
-													.attr('type', 'button')
-													.text('Add Waypoint ')
-													.append( $('<i>').addClass('icon-plus'))
-													.click(function() {
-														addWaypoint();
-													})
-													.css('margin-right', '3px')
-												)
-											)
-										)
-									)
-								)
-							)
-						)
-
-					// PERFORMANCE TAB
-				,   $('<div>')
-						.addClass('tab-pane')
-						.attr('id', 'perf')
-						.append( $('<p>PERF</p>'))
-
-					// ARRIVAL TAB
-				,   $('<div>')
-						.addClass('tab-pane')
-						.attr('id', 'arr')
-						.append(
-						$('<table>')
-							.append(
-							$('<tr>')
-								.append(
-								$('<td>')
-									.append(
-									$('<div>')
-										.addClass('input-prepend input-append')
-										.append(
-										$('<span>')
-											.addClass('add-on')
-											.text('TOD Dist.')
-									,   $('<input>')
-											.addClass('gefs-stopPropagation')
-											.attr('id', 'todInput')
-											.attr('type', 'number')
-											.attr('placeholder', 'nm')
-											.css('width', '38px')
-											.change(function() {
-												tod = $(this).val();
-											})
-										)
-									)
-							,   $('<td>')
-									.append(
-									$('<div>')
-										.addClass('input-prepend input-append')
-										.append(
-										$('<span>')
-											.addClass('add-on')
-											.text('Automatically calculate TOD')
-									,   $('<button>')
-											.addClass('btn btn-standard')
-											.attr('type', 'button')
-											.text('OFF')
-											.click(function() {
-												if (!todCalc) {
-													$(this).removeClass('btn btn-standard').addClass('btn btn-warning').text('ON');
-													todCalc = true;
-												} else {
-													$(this).removeClass('btn btn-warning').addClass('btn btn-standard').text('OFF');
-													todCalc = false;
-												}
-											})
-										)
-									)
-								)
-						,   $('<tr>')
-								.append(
-								$('<td>')
-									.append(
-									$('<div>')
-										.addClass('input-prepend input-append')
-										.append(
-										$('<span>')
-											.addClass('add-on')
-											.text('Arrival Airport Altitude')
-									,   $('<input>')
-											.addClass('input-medium')
-											.attr('type','number')
-											.attr('placeholder','ft.')
-											.css('width','50px')
-											.change(function() {
-												arrivalAlt = Number($(this).val());
-											})
-										)
-									)
-								)
-							)
-						)
-
-					// VNAV tab
-				,   $('<div>')
-						.addClass('tab-pane')
-						.attr('id','vnav')
-						.append(
-							
-						// AUTO-CLIMB/DESCENT, CRUISE ALT ROW
-						$('<table>')
-							.append(
-							$('<tr>')
-								.append(
-								$('<td>')
-									.append(
-									$('<button>')
-										.addClass('btn')
-										.attr('id','vnavButton')
-										.text('VNAV ')
-										.append( $('<i>').addClass('icon icon-resize-vertical'))
-										.click(function() {
-											toggleVNAV();
-										})
-									)
-							,   $('<td>')
-									.append(
-									$('<div>')
-										.css('margin-top', '5px')
-										.addClass('input-prepend input-append')
-										.append( 
-										$('<span>')
-											.addClass('add-on')
-											.text('Cruise Alt.')
-									,   $('<input>')
-											.addClass('gefs-stopPropagation')
-											.attr('type', 'number')
-											.attr('placeholder', 'ft')
-											.css('width', '80px')
-											.change(function() {
-												cruise = $(this).val();
-												console.log("Cruise Alt set to " + cruise + " ft.");
-											})
-										)
-									)
-								)
-							)
-						)
-					
-					// Progress tab
-				,   $('<div>')
-						.addClass('tab-pane')
-						.attr('id','prog')
-						.append(
-						$('<table>')
-							.append(
-							$('<tr>')
-								.append( 
-								$('<td>')
-									.append(
-									$('<div>')
-										.addClass('input-prepend input-append')
-										.append(
-										$('<span>')
-											.addClass('add-on')
-											.text('Dest')
-									,   $('<span>')
-											.addClass('add-on')
-											.css('background-color', 'white')
-											.css('width', '53px')
-											.append( $('<div>').attr('id', 'flightdist'))
-									,	$('<span>')
-											.addClass('add-on')
-											.css('background-color', 'white')
-											.css('width', '50px')
-											.append(
-											$('<table>')
-												.css({'position': 'relative', 'top': '-6px'})
-												.append(
-												$('<tr>')
-													.append(
-													$('<td>')
-														.append(
-														$('<div>')
-															.attr('id', 'flightete')
-															.css('font-size', '70%')
-															.css('height', '10px')
-														)
-													)
-											,   $('<tr>')
-													.append(
-													$('<td>')
-														.append(
-														$('<div>')
-															.attr('id', 'flighteta')
-															.css('font-size', '70%')
-															.css('height', '10px')
-														)
-													)
-												)
-											)
-										)
-									)
-							,   $('<td>')
-									.append(
-									$('<div>')
-										.addClass('input-prepend input-append')
-										.append(
-										$('<span>')
-											.addClass('add-on')
-											.text('TOD')
-									,   $('<span>')
-											.addClass('add-on')
-											.css('background-color', 'white')
-											.css('width', '53px')
-											.append( $('<div>').attr('id', 'toddist'))
-									,   $('<span>')
-											.addClass('add-on')
-											.css('background-color', 'white')
-											.css('width', '50px')
-											.append(
-											$('<table>')
-												.css({'position': 'relative', 'top': '-6px'})
-												.append(
-												$('<tr>')
-													.append( 
-													$('<td>')
-														.append( $
-														('<div>')
-															.attr('id', 'todete')
-															.css('font-size', '70%')
-															.css('height', '10px')
-														)
-													)
-											,   $('<tr>')
-													.append(
-													$('<td>')
-														.append(
-														$('<div>')
-															.attr('id', 'todeta')
-															.css('font-size', '70%')
-															.css('height', '10px')
-														)
-													)
-												)
-											)
-										)
-									)
-								)
-						,   $('<tr>')
-								.append(
-								$('<td>')
-									.append(
-									$('<div>')
-										.addClass('input-prepend input-append')
-										.append( 
-										$('<span>')
-											.addClass('add-on')
-											.text('Next Waypoint ')
-											.append( $('<i>').addClass('icon-map-marker'))
-									,   $('<span>')
-											.addClass('add-on')
-											.css('background-color', 'white')
-											.css('width', '53px')
-											.append( $('<div>').attr('id', 'nextDist'))
-									,   $('<span>')
-											.addClass('add-on')
-											.css('background-color', 'white')
-											.css('width', '53px')
-											.append( $('<div>').attr('id', 'nextETE'))
-										)
-									)
-								)
-							)
-						)
-				
-					// LOAD TAB
-				,   $('<div>')
-						.addClass('tab-pane')
-						.attr('id', 'load')
-						.append(
-						$('<form>')
-							.attr('action','javascript:fmc.waypoints.toRoute(fmc.waypoints.input);')
-							.addClass('form-horizontal')
-							.append(
-							$('<fieldset>')
-								.append(
-								$('<div>')
-									.addClass('input-prepend input-append')
-									.append(
-									$('<span>')
-										.addClass('add-on')
-										.text('SkyVector link ')
-										.append( $('<i>').addClass('icon-globe'))
-								,   $('<input>')
-										.attr('type', 'text')
-										.addClass('input-xlarge gefs-stopPropagation')
-										.change(function() {
-											fmc.waypoints.input = $(this).val();
-										})
-									)
-							,   $('<label class = "checkbox"><input type="checkbox" id="wptDeparture" value="true" checked> First waypoint is departure airport</label>')
-							,   $('<label class = "checkbox"><input type="checkbox" id="wptArrival" value="true" checked> Last waypoint is arrival airport</label>')
-							,   $('<button>')
-									.attr('type', 'submit')
-									.addClass('btn btn-primary')
-									.text('Load Route ')
-									.append( $('<i>').addClass('icon-play'))
-								)
-							)
-						)
-				
-					// Save tab	WIP
-				,	$('<div>')
-						.addClass('tab-pane')
-						.attr('id','save')
-						.append('<textarea>')
-						
-					// Log tab
-				,   $('<div>')
-						.addClass('tab-pane')
-						.attr('id','log')
-						.append(
-						$('<table>')
-							.attr('id','logData')
-							.append(
-							$('<tr>')
-								.append(
-								$('<th>Time</th>')
-									.css('padding','0px 10px 0px 10px')
-							,   $('<th>Speed</th>')
-									.css('padding','0px 10px 0px 10px')
-							,   $('<th>Heading</th>')
-									.css('padding','0px 10px 0px 10px')
-							,   $('<th>Altitude</th>')
-									.css('padding','0px 10px 0px 10px')
-							,   $('<th>Lat.</th>')
-									.css('padding','0px 10px 0px 10px')
-							,   $('<th>Lon.</th>')
-									.css('padding','0px 10px 0px 10px')
-							,   $('<th>FPS</th>')
-									.css('padding','0px 10px 0px 10px')
-							,   $('<th>Other</th>')
-									.css('padding','0px 10px 0px 10px')
-								)
-							)
-					,   $('<button>')
-							.addClass('btn btn-danger')
-							.attr('type','button')
-							.click(function() {
-								removeLogData();
-							})
-							.text('Clear Log ')
-							.append( $('<i>').addClass('icon-remove-circle'))
-						)
-					)
-				)
-			
-			// Footer
-		,   $('<div>')
-				.addClass('modal-footer')
-				.append(
-				$('<button>')
-					.addClass('btn btn-default')
-					.attr('type', 'button')
-					.attr('data-dismiss', 'modal')
-					.text('Close')
-			,   $('<button>')
-					.addClass('btn btn-primary')
-					.attr('type', 'button')
-					.text('Save changes ')
-					.append( $('<i>').addClass('icon-hdd'))
-				)
-			)
-		)
-,   $('<iframe frame-border="no" class="gefs-shim-iframe"></iframe>')
-	).appendTo('body');
-
-
-$('<div>')
-	.addClass('setup-section')
-	.css('padding-bottom','0px')
-	.append( $('<div>')
-		.addClass('input-prepend input-append')
-		.css('margin-bottom','4px')
-		.append(
-		$('<span>')
-			.addClass('add-on')
-			.text('Dest'),
-		$('<span>')
-			.addClass('add-on')
-			.css('background-color', 'white')
-			.css('width', '53px')
-			.append(
-			$('<div>')
-				.attr('id', 'externaldist')
-			)
-		)
-	).appendTo('td.gefs-f-standard');
-	
-for (var i = 1; i < 2; i++) {
-	addWaypoint();
-}
-
-$('#fmcModal').modal({
-	backdrop: false,
-	show: false
-});
-
-function toggleVNAV() {
-	if (VNAV) {
-		VNAV = false;
-		$('#vnavButton').removeClass('btn btn-warning').addClass('btn');
-		clearInterval(VNAVTimer);
-	} else if (cruise) {
-		VNAV = true;
-		$('#vnavButton').removeClass('btn').addClass('btn btn-warning');
-		VNAVTimer = setInterval(updateVNAV, 5000);
-	} else alert('Please enter a cruising altitude.');
-}
-
-function addWaypoint() {
-	fmc.waypoints.route.length++;
-	var n = fmc.waypoints.route.length;
-	fmc.waypoints.route[fmc.waypoints.route.length - 1] = [];
+fmc.waypoints.addWaypoint = function() {
+	var waypoints = fmc.waypoints;
+	waypoints.route.length++;
+	var n = waypoints.route.length;
+	waypoints.route[waypoints.route.length - 1] = [];
 	$('<tr>')
 		.addClass('waypoint')
 		.append(
@@ -1402,15 +821,15 @@ function addWaypoint() {
 					.attr('placeholder', 'Fix/Apt.')
 					.change(function() {
 						var n = $(this).val();
-						var coords = getCoords(n);
+						var coords = waypoints.getCoords(n);
 						var index = $(this).parents().eq(2).index() - 1;
 						if (!coords) {
-							fmc.waypoints.route[index][0] = n;
-							fmc.waypoints.route[index][4] = false;
+							waypoints.route[index][0] = n;
+							waypoints.route[index][4] = false;
 						} else {
 							$(this).parents().eq(2).children('.position').children('div').children('.lat').val(coords[0]);
 							$(this).parents().eq(2).children('.position').children('div').children('.lon').val(coords[1]);
-							fmc.waypoints.route[index] = [n, coords[0], coords[1], undefined, true];
+							waypoints.route[index] = [n, coords[0], coords[1], undefined, true];
 						}
 					})
 				)
@@ -1432,8 +851,8 @@ function addWaypoint() {
 					})
 					.change(function() {
 						var index = $(this).parents().eq(2).index() - 1;
-						fmc.waypoints.route[index][1] = formatCoords($(this).val());
-						fmc.waypoints.route[index][4] = false;
+						waypoints.route[index][1] = waypoints.formatCoords($(this).val());
+						waypoints.route[index][4] = false;
 					}), $('<input>')
 					.addClass('input-medium lon')
 					.css('width', '80px')
@@ -1443,8 +862,8 @@ function addWaypoint() {
 					})
 					.change(function() {
 						var index = $(this).parents().eq(2).index() - 1;
-						fmc.waypoints.route[index][2] = formatCoords($(this).val());
-						fmc.waypoints.route[index][4] = false;
+						waypoints.route[index][2] = waypoints.formatCoords($(this).val());
+						waypoints.route[index][4] = false;
 					})
 				)
 			)
@@ -1457,7 +876,7 @@ function addWaypoint() {
 				.addClass('input-prepend input-append')
 				.append(
 					$('<input>')
-					.addClass('input-medium')
+					.addClass('input-medium alt')
 					.css('width', '40px')
 					.attr({
 						'type': 'text',
@@ -1466,7 +885,7 @@ function addWaypoint() {
 					})
 					.change(function() {
 						var index = $(this).parents().eq(2).index() - 1;
-						fmc.waypoints.route[index][3] = Number($(this).val());
+						waypoints.route[index][3] = Number($(this).val());
 					})
 				)
 			)
@@ -1515,48 +934,748 @@ function addWaypoint() {
 					.append($('<i>').addClass('icon-remove'))
 					.click(function() {
 						var n = $(this).parents().eq(2).index();
-						removeWaypoint(n);
+						waypoints.removeWaypoint(n);
 					})
 				)
 			)
 		).appendTo('#waypoints');
-}
+};
 
-function removeWaypoint(n) {
+// Remove waypoint at index n
+fmc.waypoints.removeWaypoint = function (n) {
 	$('#waypoints tr:nth-child(' + (n + 1) + ')').remove();
 	fmc.waypoints.route.splice((n - 1), 1);
-	if (nextWaypoint == n) {
-		nextWaypoint = null;
+	if (fmc.waypoints.nextWaypoint == n) {
+		fmc.waypoints.nextWaypoint = null;
 	}
+};
+
+// Saves the waypoints data into localStorage
+fmc.waypoints.saveData = function() {
+	localStorage.removeItem('fmcWaypoints');
+	if (fmc.waypoints.route) {
+		var route = fmc.waypoints.route;
+		var arr = JSON.stringify([$('#departureInput').val(), $('#arrivalInput').val(), route]);
+		localStorage.setItem ("fmcWaypoints", arr);
+	} else alert ("There is no route to save");
+};
+
+// Retrieves the saved data and adds to the waypoint list
+fmc.waypoints.loadFromSave = function() {
+	var waypoints = fmc.waypoints;
+	var arr = JSON.parse(localStorage.getItem('fmcWaypoints'));
+	localStorage.removeItem('fmcWaypoints');
+	
+	if (arr) {
+		var route = arr[2];
+		var n = $('#waypoints tbody tr').length - 1;
+		for (var i = 0; i < n; i++) {
+			waypoints.removeWaypoint(1);
+		}
+		waypoints.route = [];
+		
+		$('#departureInput').val(arr[0]).change();
+		$('#arrivalInput').val(arr[1]).change();
+		
+		for (var i = 0; i < route.length; i++) {
+			waypoints.addWaypoint();
+			$('#waypoints input.wpt:eq(' + i + ')').val(route[i][0]).change(); // Input the fix
+			
+			if (!$('#waypoints input.lat:eq(' + i + ')').val()) { // If fix is not eligible, input the lat./lon
+				$('#waypoints input.lat:eq(' + i + ')').val(route[i][1]).change();
+				$('#waypoints input.lon:eq(' + i + ')').val(route[i][2]).change();
+			}
+			
+			if (route[i][3]) // If there is an altitude restriction
+				$('#waypoints input.alt:eq(' + i + ')').val(route[i][3]).change();
+		}
+	} else alert ("You did not save the waypoints or you cleared the browser's cache");
+};
+
+ges.resetFlight = function() {
+	if (window.confirm('Reset Flight?')) {
+		if (ges.lastFlightCoordinates) {
+			ges.flyTo(ges.lastFlightCoordinates, true);
+			updateLog('Flight reset');
+		}
+	}
+};
+
+ges.togglePause = function() {
+	if (!ges.pause) {
+		updateLog('Flight paused');
+		ges.doPause();
+	} else {
+		ges.undoPause();
+		updateLog('Flight resumed');
+	}
+};
+
+// FMC button
+$('<button>')
+	.addClass('btn btn-success gefs-stopPropagation')
+	.attr('type', 'button')
+	.attr('data-toggle', 'modal')
+	.attr('data-target', '#fmcModal')
+	.css('margin-left','1px')
+	.text('FMC ')
+	.append( $('<i>').addClass('icon-list-alt'))
+	.appendTo('div.setup-section:nth-child(2)');
+
+// FMC modal UI
+$('<div>')
+	.addClass('modal hide gefs-stopPropagation')
+	.attr('data-backdrop', 'static')
+	.attr('id', 'fmcModal')
+	.attr('tabindex', '-1')
+	.attr('role', 'dialog')
+	.attr('aria-labelledby', 'fmcDialogBoxLabel')
+	.attr('aria-hidden', 'true')
+	.css('width', '590px')
+	.append(
+
+	// Dialog
+	$('<div>')
+		.addClass('modal-dialog')
+		.append(
+
+		// Content
+		$('<div>')
+			.addClass('modal-content')
+			.append(
+
+			// Header
+			$('<div>')
+				.addClass('modal-header')
+				.append(
+				$('<button>')
+					.addClass('close')
+					.attr('type', 'button')
+					.attr('data-dismiss', 'modal')
+					.attr('aria-hidden', 'true')
+					.text('\xD7') // &times;
+			,	$('<h3>')
+					.addClass('modal-title')
+					.attr('id', 'myModalLabel')
+					.css('text-align', 'center')
+					.text('Flight Management Computer')
+				)
+
+			// Body
+		,	$('<div>')
+				.addClass('modal-body')
+				.append(
+
+				// Navigation tabs
+				$('<ul>')
+					.addClass('nav nav-tabs')
+					.append(
+						$('<li>')
+							.addClass('active')
+							.append('<a href="#rte" data-toggle="tab">RTE</a>')
+					,	$('<li>')
+							.append('<a href="#arr" data-toggle="tab">DEP/ARR</a>')
+					/*,	$('<li>')
+							.append('<a href="#perf" data-toggle="tab">PERF</a>')*/
+					,	$('<li>')
+							.append('<a href="#vnav" data-toggle="tab">VNAV</a>')
+					,	$('<li>')
+							.append('<a href="#prog" data-toggle="tab">PROG</a>')
+					,	$('<li>')
+							.append('<a href="#load" data-toggle="tab">LOAD</a>')
+					/*,	$('<li>')
+							.append('<a href-"#save" data-toggle="tab">SAVE</a>')*/
+					,	$('<li>')
+							.append('<a href="#log" data-toggle="tab">LOG</a>')
+					)
+
+				// Tab Content
+			,	$('<div>')
+					.addClass('tab-content')
+					.css('padding', '5px')
+					.append(
+
+					// ROUTE TAB
+					$('<div>')
+						.addClass('tab-pane active')
+						.attr('id', 'rte')
+						.append(
+						$('<table>')
+							.append(
+							$('<tr>')
+								.append(
+								$('<table>')
+									.append(
+									$('<tr>')
+										.append(
+			
+										// Departure Airport input
+										$('<td>')
+											.css('padding', '5px')
+											.append(
+											$('<div>')
+												.addClass('input-prepend input-append')
+												.append(
+												$('<span>')
+													.addClass('add-on')
+													.text('Departure')
+											,	$('<input>')
+													.addClass('input-mini')
+													.attr('id','departureInput')
+													.attr('type', 'text')
+													.attr('placeholder', 'ICAO')
+												)
+											)
+		
+										// Arrival Airport input
+									,	$('<td>')
+											.css('padding', '5px')
+											.append(
+											$('<div>')
+												.addClass('input-prepend input-append')
+												.append(
+												$('<span>')
+													.addClass('add-on')
+													.text('Arrival')
+											,	$('<input>')
+													.addClass('input-mini')
+													.attr('type', 'text')
+													.attr('id','arrivalInput')
+													.attr('placeholder', 'ICAO')
+													.change(function() {
+														var wpt = $(this).val();
+														var coords = fmc.waypoints.getCoords(wpt);
+														if (!coords) {
+															alert('Invalid Airport code');
+															$(this).val('');
+														}
+														else arrival = [wpt, coords[0], coords[1]];
+													})
+												)
+											)
+			
+										// Flight # input
+									,	$('<td>')
+											.css('padding', '5px')
+											.append(
+											$('<div>')
+												.addClass('input-prepend input-append')
+												.append(
+												$('<span>')
+													.addClass('add-on')
+													.text('Flight #'), $('<input>')
+													.addClass('input-mini')
+													.css('width', '80px')
+													.attr('type', 'text')
+												)
+											)
+										)
+									)
+								)
+							
+							// Waypoints list labels
+						,	$('<tr>')
+								.append(
+								$('<table>')
+									.attr('id','waypoints')
+									.append( 
+									$('<tr>')
+										.append(
+										$('<td>').append('<th>Waypoints</th>')
+									,	$('<td>').append('<th>Position</th>')
+									,	$('<td>').append('<th>Altitude</th>')
+									,	$('<td>').append('<th>Actions</th>')
+										)
+									)
+								)
+								
+							// Add Waypoint
+						,	$('<tr>')
+								.append(
+								$('<div>')
+									.attr('id','waypointsAddDel')
+									.append(
+									$('<table>')
+										.append(
+										$('<tr>')
+											.append(
+											$('<td>')
+												.append(
+												$('<button>')
+													.addClass('btn btn-primary')
+													.attr('type', 'button')
+													.text('Add Waypoint ')
+													.append( $('<i>').addClass('icon-plus'))
+													.click(function() {
+														fmc.waypoints.addWaypoint();
+													})
+													.css('margin-right', '3px')
+												)
+											)
+										)
+									)
+								)
+								
+							// Save Route	
+						,	$('<tr>')
+								.append(
+								$('<div>')
+									.attr('id','saveRoute')
+									.append(
+									$('<table>')
+										.append(
+										$('<tr>')
+											.append(
+											$('<td>')
+												.append(
+												$('<button>')
+													.addClass('btn btn-inverse')
+													.attr('type', 'button')
+													.text('Save Route  ')
+													.append( $('<i>').addClass('icon-hdd icon-white'))
+													.click(function() {
+														fmc.waypoints.saveData();
+													})
+													.css('margin-right', '3px')
+												)
+											)
+										)
+									)
+								)
+							)
+						)
+
+					// PERFORMANCE TAB
+				,	$('<div>')
+						.addClass('tab-pane')
+						.attr('id', 'perf')
+						.append( $('<p>PERF</p>'))
+
+					// ARRIVAL TAB
+				,	$('<div>')
+						.addClass('tab-pane')
+						.attr('id', 'arr')
+						.append(
+						$('<table>')
+							.append(
+							$('<tr>')
+								.append(
+								$('<td>')
+									.append(
+									$('<div>')
+										.addClass('input-prepend input-append')
+										.append(
+										$('<span>')
+											.addClass('add-on')
+											.text('TOD Dist.')
+									,	$('<input>')
+											.addClass('gefs-stopPropagation')
+											.attr('id', 'todInput')
+											.attr('type', 'number')
+											.attr('placeholder', 'nm')
+											.css('width', '38px')
+											.change(function() {
+												tod = $(this).val();
+											})
+										)
+									)
+							,	$('<td>')
+									.append(
+									$('<div>')
+										.addClass('input-prepend input-append')
+										.append(
+										$('<span>')
+											.addClass('add-on')
+											.text('Automatically calculate TOD')
+									,	$('<button>')
+											.addClass('btn btn-standard')
+											.attr('type', 'button')
+											.text('OFF')
+											.click(function() {
+												if (!todCalc) {
+													$(this).removeClass('btn btn-standard').addClass('btn btn-warning').text('ON');
+													todCalc = true;
+												} else {
+													$(this).removeClass('btn btn-warning').addClass('btn btn-standard').text('OFF');
+													todCalc = false;
+												}
+											})
+										)
+									)
+								)
+						,	$('<tr>')
+								.append(
+								$('<td>')
+									.append(
+									$('<div>')
+										.addClass('input-prepend input-append')
+										.append(
+										$('<span>')
+											.addClass('add-on')
+											.text('Arrival Airport Altitude')
+									,	$('<input>')
+											.addClass('input-medium')
+											.attr('type','number')
+											.attr('placeholder','ft.')
+											.css('width','50px')
+											.change(function() {
+												arrivalAlt = Number($(this).val());
+											})
+										)
+									)
+								)
+							)
+						)
+
+					// VNAV tab
+				,	$('<div>')
+						.addClass('tab-pane')
+						.attr('id','vnav')
+						.append(
+							
+						// AUTO-CLIMB/DESCENT, CRUISE ALT ROW
+						$('<table>')
+							.append(
+							$('<tr>')
+								.append(
+								$('<td>')
+									.append(
+									$('<button>')
+										.addClass('btn')
+										.attr('id','vnavButton')
+										.text('VNAV ')
+										.append( $('<i>').addClass('icon icon-resize-vertical'))
+										.click(function() {
+											toggleVNAV();
+										})
+									)
+							,	$('<td>')
+									.append(
+									$('<div>')
+										.css('margin-top', '5px')
+										.addClass('input-prepend input-append')
+										.append( 
+										$('<span>')
+											.addClass('add-on')
+											.text('Cruise Alt.')
+									,	$('<input>')
+											.addClass('gefs-stopPropagation')
+											.attr('type', 'number')
+											.attr('placeholder', 'ft')
+											.css('width', '80px')
+											.change(function() {
+												cruise = $(this).val();
+												console.log("Cruise Alt set to " + cruise + " ft.");
+											})
+										)
+									)
+								)
+							)
+						)
+					
+					// Progress tab
+				,	$('<div>')
+						.addClass('tab-pane')
+						.attr('id','prog')
+						.append(
+						$('<table>')
+							.append(
+							$('<tr>')
+								.append( 
+								$('<td>')
+									.append(
+									$('<div>')
+										.addClass('input-prepend input-append')
+										.append(
+										$('<span>')
+											.addClass('add-on')
+											.text('Dest')
+									,	$('<span>')
+											.addClass('add-on')
+											.css('background-color', 'white')
+											.css('width', '53px')
+											.append( $('<div>').attr('id', 'flightdist'))
+									,	$('<span>')
+											.addClass('add-on')
+											.css('background-color', 'white')
+											.css('width', '50px')
+											.append(
+											$('<table>')
+												.css({'position': 'relative', 'top': '-6px'})
+												.append(
+												$('<tr>')
+													.append(
+													$('<td>')
+														.append(
+														$('<div>')
+															.attr('id', 'flightete')
+															.css('font-size', '70%')
+															.css('height', '10px')
+														)
+													)
+											,	$('<tr>')
+													.append(
+													$('<td>')
+														.append(
+														$('<div>')
+															.attr('id', 'flighteta')
+															.css('font-size', '70%')
+															.css('height', '10px')
+														)
+													)
+												)
+											)
+										)
+									)
+							,	$('<td>')
+									.append(
+									$('<div>')
+										.addClass('input-prepend input-append')
+										.append(
+										$('<span>')
+											.addClass('add-on')
+											.text('TOD')
+									,	$('<span>')
+											.addClass('add-on')
+											.css('background-color', 'white')
+											.css('width', '53px')
+											.append( $('<div>').attr('id', 'toddist'))
+									,	$('<span>')
+											.addClass('add-on')
+											.css('background-color', 'white')
+											.css('width', '50px')
+											.append(
+											$('<table>')
+												.css({'position': 'relative', 'top': '-6px'})
+												.append(
+												$('<tr>')
+													.append( 
+													$('<td>')
+														.append( $
+														('<div>')
+															.attr('id', 'todete')
+															.css('font-size', '70%')
+															.css('height', '10px')
+														)
+													)
+											,	$('<tr>')
+													.append(
+													$('<td>')
+														.append(
+														$('<div>')
+															.attr('id', 'todeta')
+															.css('font-size', '70%')
+															.css('height', '10px')
+														)
+													)
+												)
+											)
+										)
+									)
+								)
+						,	$('<tr>')
+								.append(
+								$('<td>')
+									.append(
+									$('<div>')
+										.addClass('input-prepend input-append')
+										.append( 
+										$('<span>')
+											.addClass('add-on')
+											.text('Next Waypoint ')
+											.append( $('<i>').addClass('icon-map-marker'))
+									,	$('<span>')
+											.addClass('add-on')
+											.css('background-color', 'white')
+											.css('width', '53px')
+											.append( $('<div>').attr('id', 'nextDist'))
+									,	$('<span>')
+											.addClass('add-on')
+											.css('background-color', 'white')
+											.css('width', '53px')
+											.append( $('<div>').attr('id', 'nextETE'))
+										)
+									)
+								)
+							)
+						)
+				
+					// LOAD TAB
+				,	$('<div>')
+						.addClass('tab-pane')
+						.attr('id', 'load')
+						.append(
+						$('<form>')
+							.attr('action','javascript:fmc.waypoints.toRoute(fmc.waypoints.input);')
+							.addClass('form-horizontal')
+							.append(
+							$('<fieldset>')
+								.append(
+								$('<div>')
+									.addClass('input-prepend input-append')
+									.append(
+									$('<span>')
+										.addClass('add-on')
+										.text('SkyVector / Waypoints ')
+										.append( $('<i>').addClass('icon-globe'))
+								,	$('<input>')
+										.attr('type', 'text')
+										.addClass('input-xlarge gefs-stopPropagation')
+										.change(function() {
+											fmc.waypoints.input = $(this).val();
+										})
+									)
+							,	$('<label class = "checkbox"><input type="checkbox" id="wptDeparture" value="true" checked> First waypoint is departure airport</label>')
+							,	$('<label class = "checkbox"><input type="checkbox" id="wptArrival" value="true" checked> Last waypoint is arrival airport</label>')
+							,	$('<button>')
+									.attr('type', 'submit')
+									.addClass('btn btn-primary')
+									.text('Load Route ')
+									.append( $('<i>').addClass('icon-play'))
+								)
+							)
+						)
+				
+					// Save tab	WIP
+				,	$('<div>')
+						.addClass('tab-pane')
+						.attr('id','save')
+						.append('<textarea>')
+						
+					// Log tab
+				,	$('<div>')
+						.addClass('tab-pane')
+						.attr('id','log')
+						.append(
+						$('<table>')
+							.attr('id','logData')
+							.append(
+							$('<tr>')
+								.append(
+								$('<th>Time</th>')
+									.css('padding','0px 10px 0px 10px')
+							,	$('<th>Speed</th>')
+									.css('padding','0px 10px 0px 10px')
+							,	$('<th>Heading</th>')
+									.css('padding','0px 10px 0px 10px')
+							,	$('<th>Altitude</th>')
+									.css('padding','0px 10px 0px 10px')
+							,	$('<th>Lat.</th>')
+									.css('padding','0px 10px 0px 10px')
+							,	$('<th>Lon.</th>')
+									.css('padding','0px 10px 0px 10px')
+							,	$('<th>FPS</th>')
+									.css('padding','0px 10px 0px 10px')
+							,	$('<th>Other</th>')
+									.css('padding','0px 10px 0px 10px')
+								)
+							)
+					,	$('<button>')
+							.addClass('btn btn-danger')
+							.attr('type','button')
+							.click(function() {
+								removeLogData();
+							})
+							.text('Clear Log ')
+							.append( $('<i>').addClass('icon-remove-circle'))
+						)
+					)
+				)
+			
+			// Footer
+		,	$('<div>')
+				.addClass('modal-footer')
+				.append(
+				$('<button>')
+					.addClass('btn btn-default')
+					.attr('type', 'button')
+					.attr('data-dismiss', 'modal')
+					.text('Close')
+			,	$('<button>')
+					.addClass('btn btn-primary')
+					.attr('type', 'button')
+					.text('Save changes ')
+					.append( $('<i>').addClass('icon-hdd'))
+				)
+			)
+		)
+,	$('<iframe frame-border="no" class="gefs-shim-iframe"></iframe>')
+	).appendTo('body');
+
+
+$('<div>')
+	.addClass('setup-section')
+	.css('padding-bottom','0px')
+	.append( $('<div>')
+		.addClass('input-prepend input-append')
+		.css('margin-bottom','4px')
+		.append(
+		$('<span>')
+			.addClass('add-on')
+			.text('Dest'),
+		$('<span>')
+			.addClass('add-on')
+			.css('background-color', 'white')
+			.css('width', '53px')
+			.append(
+			$('<div>')
+				.attr('id', 'externaldist')
+			)
+		)
+	).appendTo('td.gefs-f-standard');
+	
+		
+$('#fmcModal').modal({
+	backdrop: false,
+	show: false
+});
+
+// Initialize to 1 waypoints input field
+fmc.waypoints.addWaypoint();
+
+function toggleVNAV() {
+	if (VNAV) {
+		VNAV = false;
+		$('#vnavButton').removeClass('btn btn-warning').addClass('btn');
+		clearInterval(VNAVTimer);
+	} else if (cruise) {
+		VNAV = true;
+		$('#vnavButton').removeClass('btn').addClass('btn btn-warning');
+		VNAVTimer = setInterval(updateVNAV, 5000);
+	} else alert('Please enter a cruising altitude.');
 }
 
+// Shifts the waypoint from index r to index n, with direction d
 function shiftWaypoint(r, n, d) {
+	var waypoints = fmc.waypoints;
 	console.log("Waypoint #" + n + " moved " + d);
-	if (!(d == "up" && n == 1 || d == "down" && n == fmc.waypoints.route.length)) {
+	if (!(d == "up" && n == 1 || d == "down" && n == waypoints.route.length)) {
 		if (d == "up") {
-			fmc.waypoints.route.move(n - 1, n - 2);
+			waypoints.route.move(n - 1, n - 2);
 			r.insertBefore(r.prev());
-			if (nextWaypoint == n) {
-				nextWaypoint = n - 1;
-			} else if (nextWaypoint == n - 1) {
-				nextWaypoint = n + 1;
+			if (waypoints.nextWaypoint == n) {
+				waypoints.nextWaypoint = n - 1;
+			} else if (waypoints.nextWaypoint == n - 1) {
+				waypoints.nextWaypoint = n + 1;
 			}
 		} else {
-			fmc.waypoints.route.move(n - 1, n);
+			waypoints.route.move(n - 1, n);
 			r.insertAfter(r.next());
-			if (nextWaypoint == n) {
-				nextWaypoint = n + 1;
-			} else if (nextWaypoint == n + 1) {
-				nextWaypoint = n - 1;
+			if (waypoints.nextWaypoint == n) {
+				waypoints.nextWaypoint = n + 1;
+			} else if (waypoints.nextWaypoint == n + 1) {
+				waypoints.nextWaypoint = n - 1;
 			}
 		}
 	}
 }
 
+// Clears the log
 function removeLogData() {
 	$('#logData tr').remove('.data');
 }
 
+// Prototype, moves array elements
 Array.prototype.move = function(index1, index2) {
 	if (index2 >= this.length) {
 		var k = index2 - this.length;
