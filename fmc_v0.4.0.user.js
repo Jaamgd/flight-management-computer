@@ -47,7 +47,7 @@ window.fmc = {
 		toFixesString: function() {
 			return fmc.waypoints.makeFixesArray().join(" ");
 		}, 
-		toRouteString: function() { // @TODO make loadFromSave take an argument (optional) of this format
+		toRouteString: function() {
 			return JSON.stringify ([
 				$('#departureInput').val(), 
 				$('#arrivalInput').val(), 
@@ -756,50 +756,53 @@ fmc.waypoints.formatCoords = function (a) {
 
 // Turn a skyvector link or a normal waypoint input (seperated by spaces) to waypoints
 fmc.waypoints.toRoute = function (url) {
-	var index = url.indexOf('fpl=');
-	var isSkyvector = url.indexOf('skyvector.com') !== -1 && index !== -1;
-	var isWaypoints = true;
-	var departure = $('#wptDeparture')[0].checked;
-	var arrival = $('#wptArrival')[0].checked;
-	var n = $('#waypoints tbody tr').length - 1;
-	var a;
-	var str = [];
-
-	if (isSkyvector) str = url.substring(index + 4).trim().split(" ");
+	if (url.indexOf('["') === 0) fmc.waypoints.loadFromSave(url);
 	else {
-		str = url.trim().toUpperCase().split(" ");
-		for (var i = 0; i < str.length; i++)
-			if (str[i].length > 5 || str[i].length < 1 || !(/^\w+$/.test(str[i])))
-				isWaypoints = false;
-	}
+		var index = url.indexOf('fpl=');
+		var isSkyvector = url.indexOf('skyvector.com') !== -1 && index !== -1;
+		var isWaypoints = true;
+		var departure = $('#wptDeparture')[0].checked;
+		var arrival = $('#wptArrival')[0].checked;
+		var n = $('#waypoints tbody tr').length - 1;
+		var a;
+		var str = [];
 
-	if (isSkyvector || isWaypoints) {
-		for (var i = 0; i < n; i++) {
-			fmc.waypoints.removeWaypoint(1);
+		if (isSkyvector) str = url.substring(index + 4).trim().split(" ");
+		else {
+			str = url.trim().toUpperCase().split(" ");
+			for (var i = 0; i < str.length; i++)
+				if (str[i].length > 5 || str[i].length < 1 || !(/^\w+$/.test(str[i])))
+					isWaypoints = false;
 		}
-		fmc.waypoints.route = [];
 
-		if (departure) {
-			var wpt = str[0];
-			$('#departureInput').val(wpt).change();
-			a = 1;
+		if (isSkyvector || isWaypoints) {
+			for (var i = 0; i < n; i++) {
+				fmc.waypoints.removeWaypoint(1);
+			}
+			fmc.waypoints.route = [];
+
+			if (departure) {
+				var wpt = str[0];
+				$('#departureInput').val(wpt).change();
+				a = 1;
+			} else {
+				a = 0;
+				$('#departureInput').val("").change();
+			}
+			for (var i = 0; i + a < str.length; i++) {
+				fmc.waypoints.addWaypoint();
+				var wpt = str[i + a];
+				$('#waypoints input.wpt:eq(' + i + ')').val(wpt).change();
+			}
+			if (arrival) {
+				var wpt = str[str.length - 1];
+				$('#arrivalInput').val(wpt).change();
+			}
 		} else {
-			a = 0;
-			$('#departureInput').val("").change();
-		}
-		for (var i = 0; i + a < str.length; i++) {
-			fmc.waypoints.addWaypoint();
-			var wpt = str[i + a];
-			$('#waypoints input.wpt:eq(' + i + ')').val(wpt).change();
-		}
-		if (arrival) {
-			var wpt = str[str.length - 1];
-			$('#arrivalInput').val(wpt).change();
-		}
-	} else {
-		if (!isWaypoints) {
-			if (!isSkyvector) alert("Invalid Skyvector Link");
-			else alert("Invalid Waypoints Input");
+			if (!isWaypoints) {
+				if (!isSkyvector) alert("Invalid Skyvector Link");
+				else alert("Invalid Waypoints Input");
+			}
 		}
 	}
 };
@@ -968,18 +971,23 @@ fmc.waypoints.saveData = function() {
 };
 
 // Retrieves the saved data and adds to the waypoint list
-fmc.waypoints.loadFromSave = function() {
+fmc.waypoints.loadFromSave = function (arg) {
+	arg = arg || localStorage.getItem('fmcWaypoints');
 	var waypoints = fmc.waypoints;
-	var arr = JSON.parse(localStorage.getItem('fmcWaypoints'));
+	var arr = JSON.parse(arg);
 	localStorage.removeItem('fmcWaypoints');
 	
 	if (arr) {
+		waypoints.route = [];
 		var route = arr[3];
 		var n = $('#waypoints tbody tr').length - 1;
 		for (var i = 0; i < n; i++) {
 			waypoints.removeWaypoint(1);
 		}
-		waypoints.route = [];
+		// JSON.stringify turns undefined into null; this loop turns it back
+		route.forEach(function (wpt) {
+			if (!wpt[3] || wpt[3] == null) wpt[3] = undefined;
+		});
 		
 		if (arr[0]) $('#departureInput').val(arr[0]).change();
 		if (arr[1]) $('#arrivalInput').val(arr[1]).change();
@@ -988,20 +996,12 @@ fmc.waypoints.loadFromSave = function() {
 		for (var i = 0; i < route.length; i++) {
 			waypoints.addWaypoint();
 			$('#waypoints input.wpt:eq(' + i + ')').val(route[i][0]).change(); // Input the fix
-			
-			if (!$('#waypoints input.lat:eq(' + i + ')').val()) { // If fix is not eligible, input the lat./lon
-				$('#waypoints input.lat:eq(' + i + ')').val(route[i][1]).change();
-				$('#waypoints input.lon:eq(' + i + ')').val(route[i][2]).change();
-			}
+			$('#waypoints input.lat:eq(' + i + ')').val(route[i][1]).change(); // Input the lat.
+			$('#waypoints input.lon:eq(' + i + ')').val(route[i][2]).change(); // Input the lon.
 			
 			if (route[i][3]) // If there is an altitude restriction
 				$('#waypoints input.alt:eq(' + i + ')').val(route[i][3]).change();
 		}
-		
-		// JSON.stringify turns undefined into null; this loop turns it back
-		fmc.waypoints.route.forEach(function (wpt) {
-			if (!wpt[3] || wpt[3] == null) wpt[3] = undefined;
-		});
 	} else alert ("You did not save the waypoints or you cleared the browser's cache");
 };
 
@@ -1524,7 +1524,7 @@ $('<div>')
 						.addClass('tab-pane')
 						.attr('id', 'load')
 						.append(
-						$('<th>Enter a SkyVector link or waypoints seperated by spaces</th>'),
+						$('<th>Enter a SkyVector link, waypoints seperated by spaces, or a generated route</th>'),
 						$('<form>')
 							.attr('action','javascript:fmc.waypoints.toRoute(fmc.waypoints.input);')
 							.addClass('form-horizontal')
@@ -1552,6 +1552,36 @@ $('<div>')
 									.addClass('btn btn-primary')
 									.text('Load Route ')
 									.append( $('<i>').addClass('icon-play'))
+								)
+								
+							// Share route / generate route	
+						,	$('<fieldset>')
+								.css('margin-top', '10px')
+								.append(
+									$('<button>')
+									.addClass('btn btn-warning')
+									.attr('type','button')
+									.text('Generate')
+									.click(function() {
+										$('#generateRoute').val(fmc.waypoints.toRouteString()).change();
+									}), 
+									$('<button>')
+									.addClass('btn btn-warning')
+									.attr('type','button')
+									.css('margin-left', '5px')
+									.text('Clear')
+									.click(function() {
+										$('#generateRoute').val("").change();
+									}),
+									$('<div>').css('margin-top', '10px').append(
+										$('<textarea>')
+										.attr('id', 'generateRoute')
+										.attr('placeholder', 'Generate route. Save it or share it')
+										.css('margin', '0px 0px 10px')
+										.css('width', '350px')
+										.css('height', '65px')
+										.css('resize', 'none')
+									)
 								)
 							)
 						)
@@ -1660,7 +1690,7 @@ function toggleVNAV() {
 	} else alert('Please enter a cruising altitude.');
 }
 
-// Shifts the waypoint from index r to index n, with direction d
+// Shifts the waypoint n towards direction d 1 step; move element r to correct position
 function shiftWaypoint(r, n, d) {
 	var waypoints = fmc.waypoints;
 	console.log("Waypoint #" + n + " moved " + d);
