@@ -996,8 +996,11 @@ fmc.waypoints.loadFromSave = function (arg) {
 		for (var i = 0; i < route.length; i++) {
 			waypoints.addWaypoint();
 			$('#waypoints input.wpt:eq(' + i + ')').val(route[i][0]).change(); // Input the fix
-			$('#waypoints input.lat:eq(' + i + ')').val(route[i][1]).change(); // Input the lat.
-			$('#waypoints input.lon:eq(' + i + ')').val(route[i][2]).change(); // Input the lon.
+			
+			if (!route[i][4]) { // If the waypoint is not eligible or a duplicate
+				$('#waypoints input.lat:eq(' + i + ')').val(route[i][1]).change(); // Input the lat.
+				$('#waypoints input.lon:eq(' + i + ')').val(route[i][2]).change(); // Input the lon.
+			}
 			
 			if (route[i][3]) // If there is an altitude restriction
 				$('#waypoints input.alt:eq(' + i + ')').val(route[i][3]).change();
@@ -1245,7 +1248,7 @@ $('<div>')
 											$('<td>')
 												.append(
 												$('<button>')
-													.addClass('btn btn-inverse')
+													.addClass('btn btn-info')
 													.attr('type', 'button')
 													.text('Save Route ')
 													.append( $('<i>').addClass('icon-file icon-white'))
@@ -1254,7 +1257,7 @@ $('<div>')
 													})
 													.css('margin-right', '3px')
 											,	$('<button>')
-													.addClass('btn btn-inverse')
+													.addClass('btn btn-info')
 													.attr('type', 'button')
 													.text('Retrieve Route ')
 													.append( $('<i>').addClass('icon-refresh icon-white'))
