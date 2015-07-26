@@ -972,6 +972,17 @@ fmc.waypoints.saveData = function() {
 
 // Retrieves the saved data and adds to the waypoint list
 fmc.waypoints.loadFromSave = function (arg) {
+	
+/**
+ * The argument passed in or the localStorage is a 3D array 
+ * in String format. arr is the array after JSON.parse 
+ *	
+ * arr[0] Departure input
+ * arr[1] Arrival Input
+ * arr[2] Flight Number
+ * arr[3] 2D array, the route
+ */
+	
 	arg = arg || localStorage.getItem('fmcWaypoints');
 	var waypoints = fmc.waypoints;
 	var arr = JSON.parse(arg);
@@ -1008,29 +1019,10 @@ fmc.waypoints.loadFromSave = function (arg) {
 	} else alert ("You did not save the waypoints or you cleared the browser's cache");
 };
 
-// Adds a confirm window to prevent accidental reset
-ges.resetFlight = function() {
-	if (window.confirm('Reset Flight?')) {
-		if (ges.lastFlightCoordinates) {
-			ges.flyTo(ges.lastFlightCoordinates, true);
-			updateLog('Flight reset');
-		}
-	}
-};
-
-// Tracks pause event
-ges.togglePause = function() {
-	if (!ges.pause) {
-		updateLog('Flight paused');
-		ges.doPause();
-	} else {
-		ges.undoPause();
-		updateLog('Flight resumed');
-	}
-};
-
+// FMC html elements
+fmc.ui = {
 // FMC button
-$('<button>')
+button: $('<button>')
 	.addClass('btn btn-success gefs-stopPropagation')
 	.attr('type', 'button')
 	.attr('data-toggle', 'modal')
@@ -1038,10 +1030,10 @@ $('<button>')
 	.css('margin-left','1px')
 	.text('FMC ')
 	.append( $('<i>').addClass('icon-list-alt'))
-	.appendTo('div.setup-section:nth-child(2)');
+	.appendTo('div.setup-section:nth-child(2)'),
 
 // FMC modal UI
-$('<div>')
+modal: $('<div>')
 	.addClass('modal hide gefs-stopPropagation')
 	.attr('data-backdrop', 'static')
 	.attr('id', 'fmcModal')
@@ -1647,10 +1639,10 @@ $('<div>')
 			)
 		)
 ,	$('<iframe frame-border="no" class="gefs-shim-iframe"></iframe>')
-	).appendTo('body');
+	).appendTo('body'),
 
 // External distance indicator
-$('<div>')
+externalDist: $('<div>')
 	.addClass('setup-section')
 	.css('padding-bottom','0px')
 	.append( $('<div>')
@@ -1669,7 +1661,8 @@ $('<div>')
 				.attr('id', 'externaldist')
 			)
 		)
-	).appendTo('td.gefs-f-standard');
+	).appendTo('td.gefs-f-standard')
+};
 	
 // Hides backdrop for the modal	
 $('#fmcModal').modal({
@@ -1677,8 +1670,34 @@ $('#fmcModal').modal({
 	show: false
 });
 
+// "T" Keyup bug fix
+$('#fmcModal').keyup(function(event) {
+	event.stopImmediatePropagation();
+});
+
 // Initialize to 1 waypoint input field
 fmc.waypoints.addWaypoint();
+
+// Adds a confirm window to prevent accidental reset
+ges.resetFlight = function() {
+	if (window.confirm('Reset Flight?')) {
+		if (ges.lastFlightCoordinates) {
+			ges.flyTo(ges.lastFlightCoordinates, true);
+			updateLog('Flight reset');
+		}
+	}
+};
+
+// Tracks pause event
+ges.togglePause = function() {
+	if (!ges.pause) {
+		updateLog('Flight paused');
+		ges.doPause();
+	} else {
+		ges.undoPause();
+		updateLog('Flight resumed');
+	}
+};
 
 // Enables VNAV function
 function toggleVNAV() {
@@ -1734,8 +1753,3 @@ Array.prototype.move = function(index1, index2) {
 	this.splice(index2, 0, this.splice(index1, 1)[0]);
 	return this;
 };
-
-// "T" Keyup bug fix
-$('#fmcModal').keyup(function(event) {
-	event.stopImmediatePropagation();
-});
