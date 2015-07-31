@@ -9,9 +9,9 @@
 // @grant none
 // ==/UserScript==
 
-// IMPORTANT: Please disable your original autopilot plugin or delete this line.
-// AP++ v0.8.1 with AIRAC 1505, for testing purposes
-$('<script type = "text/javascript" src = "https://dl.dropboxusercontent.com/s/jyl2u91isr94oc6/app.user.js">').appendTo('body');
+// IMPORTANT: Please disable your original autopilot plugin or delete line:14
+// AP++ v0.8.1 with AIRAC 1505 (waypoints + navaids), for testing purposes
+$('<script type="text/javascript" src="https://dl.dropboxusercontent.com/s/ogrfm3necctimjh/ap_1505.user.js"></script>').appendTo('body');
 
 // Global variables/constants
 window.feetToNM = 1 / 6076;
@@ -20,9 +20,21 @@ window.nmToFeet = 6076;
 // fmc library, publicly accessible methods and variables
 window.fmc = {
 	math: {
+		/**
+		 * Turns degrees to radians
+		 * 
+		 * @param {Number} degrees The degree to be converted
+		 * @return {Number} Radians of the degree
+		 */
 		toRadians: function (degrees) {
 			return degrees * Math.PI / 180;
 		},
+		/**
+		 * Turns radians to degrees
+		 * 
+		 * @param {Number} radians The radian to be converted
+		 * @return {Number} Degree of the radian
+		 */
 		toDegrees: function (radians) {
 			return radians * 180 / Math.PI;
 		},
@@ -32,7 +44,12 @@ window.fmc = {
 		input: "",
 		route: [],
 		nextWaypoint: "",
-		makeFixesArray: function() {
+		/**
+		 * Turns the waypoints into an array
+		 *
+		 * @return {Array} The array of waypoint names
+		 */
+		makeFixesArray: function () {
 			var result = [];
 			var departureVal = $('#departureInput').val();
 			if (departureVal) result.push(departureVal);
@@ -44,16 +61,27 @@ window.fmc = {
 			
 			return result;
 		},
-		toFixesString: function() {
+		/**
+		 * Joins the fixes array into a string
+		 *
+		 * @return {String} All waypoints, each seperated by a space
+		 */
+		toFixesString: function () {
 			return fmc.waypoints.makeFixesArray().join(" ");
 		}, 
-		toRouteString: function() {
+		/**
+		 * Makes a sharable route
+		 * 
+		 * @return {String} A sharable route with airports and waypoints, 
+		 * 					using <code>JSON.stringify</code> method
+		 */
+		toRouteString: function () {
 			return JSON.stringify ([
 				$('#departureInput').val(), 
 				$('#arrivalInput').val(), 
 				$('#flightNumInput').val(), 
 				fmc.waypoints.route
-			]); // .replace(/null/g, 'undefined');
+			]);
 		}
 	}
 };
@@ -66,9 +94,11 @@ var phase = "climb";
 var todCalc = false;
 var arrivalAlt = 0;
 
-// Updates the plane's progress: time and location
+/**
+ * Updates the plane's progress during flying, set on a timer
+ */
 var progTimer = setInterval(updateProgress, 5000);
-function updateProgress() {
+function updateProgress () {
 	var lat1 = ges.aircraft.llaLocation[0] || 0;
 	var lon1 = ges.aircraft.llaLocation[1] || 0;
 	var lat2 = arrival[1] || 0;
@@ -98,9 +128,11 @@ function updateProgress() {
 	print(flightdist, nextdist, times);
 }
 
-// Controls LNAV, plane's lateral navigation
+/**
+ * Controls LNAV, plane's lateral navigation, set on a timer
+ */
 var LNAVTimer = setInterval(updateLNAV, 5000);
-function updateLNAV() {
+function updateLNAV () {
 	var d = getRouteDistance(fmc.waypoints.nextWaypoint);
 	if (d <= getTurnDistance(60)) {
 		activateLeg(fmc.waypoints.nextWaypoint + 1);
@@ -110,45 +142,93 @@ function updateLNAV() {
 	else LNAVTimer = setInterval(updateLNAV, 30000);
 }
 
-// Controls VNAV, plane's vertical navigation
+/**
+ * Controls VNAV, plane's vertical navigation, set on a timer
+ *
+ * @TODO VNAV bugs fix + new implementation: ALMOST DONE
+ */
 var VNAVTimer;
-function updateVNAV() {
+function updateVNAV () {
 	var aircraft = ges.aircraft.name;
 	var next = getNextWaypointWithAltRestriction();
 	var currentAlt = ges.aircraft.animationValue.altitude;
-	var targetAlt;
-	try {
-		targetAlt = fmc.waypoints.route[next - 1][3];
-	} catch (e) {
-		targetAlt = currentAlt;
-	}
+	
+	if (next < 1) var targetAlt = currentAlt;
+	else var targetAlt = fmc.waypoints.route[next - 1][3];
+	
 	var deltaAlt = targetAlt - currentAlt;
 	var nextDist = getRouteDistance(next);
 	var targetDist = getTargetDist(deltaAlt);
 
 	var params = getFlightParameters(aircraft);
+	
 	var spd = params[0];
 	var vs, alt;
-
-	if (next) {
+	
+	var hasRestriction = next !== -1;
+	var targetReached = targetDist >= nextDist;
+	
+	// Manual override, is toggled
+	var tSpd = $('#tSpd').hasClass('btn-primary');
+	var tAlt = $('#tAlt').hasClass('btn-primary'); 
+	var tVS = $('#tVS').hasClass('btn-primary');
+		
+	console.log('SPD Toggled: ' + tSpd + ', ALT Toggled: ' + tAlt + ', V/S Toggled: ' + tVS);
+	
+	// If there is an altitude restriction
+	if (hasRestriction) {
 		console.log('Next Waypoint with Altitude Restriction: ' + fmc.waypoints.route[next - 1][0] + ' @ ' + fmc.waypoints.route[next - 1][3]);
 		console.log('deltaAlt: ' + deltaAlt + ', targetDist: ' + targetDist + ', nextDist: ' + nextDist);
-
-		if (nextDist < targetDist) {
+		// If target is not reached
+		if (!targetReached) {
+			// If phase is climb
+			if (phase == "climb") {
+				// Total distance it takes from current altitude to cruise and from cruise down to the next target altitude
+				var upAndDownDist = getTargetDist(cruise - currentAlt) + getTargetDist(targetAlt - cruise);
+				var incursionSetting = nextDist < upAndDownDist;
+				console.log('upAndDownDist: ' + upAndDownDist + ", Altitude incursion protection: " + incursionSetting);
+				
+				// If the current altitude approaches the restriction
+				// Given that the distance to next restricted waypoint is smaller than upAndDownDist
+				if (Math.abs(currentAlt - targetAlt) < 300 && incursionSetting) {
+					alt = targetAlt; 
+					vs = 1500;
+				}
+				// Normal conditions: 
+				else {
+					alt = cruise;
+					vs = params[1];
+				}
+			}
+			// if phase is descent, keep current altitude until target is reached
+			
+			/* Alternative solution: 
+			if (phase == "descent") {
+				// If target altitude approached prematurely
+				if (Math.abs(currentAlt - targetAlt) < 300) {
+					alt = targetAlt; 
+					vs = -1000;
+				}
+				else {
+					// If still in VNAV controlled descent altitude
+					if (currentAlt > 11000) {
+						alt = 11000;
+						vs = params[1];
+					}
+				}
+			}*/
+		}
+		
+		// If target is reached
+		else {
+			alt = targetAlt;
 			vs = fmc.math.getClimbrate(deltaAlt, nextDist);
 			console.log('VS: ' + vs + ' fpm');
-			alt = targetAlt;
-		} else if (deltaAlt > 0) {
-			var totalDist = (cruise - currentAlt) / 1000 * 2.5 + (cruise - targetAlt) / 1000 * 3.4;
-			vs = params[1];
-			console.log('Climb: ' + (cruise - currentAlt) + ', Descent: ' + (cruise - targetAlt) + ', totalDist: ' + totalDist);
-			if (nextDist < totalDist) {
-				alt = targetAlt;
-			} else {
-				alt = cruise;
-			}
 		}
-	} else {
+	} /*End of hasRestriction block*/
+	
+	// If there is not an altitude restriction
+	else {
 		vs = params[1];
 		if (phase == "climb") {
 			alt = cruise;
@@ -156,29 +236,34 @@ function updateVNAV() {
 			alt = 11000;
 		}
 	}
-
+	
+	// Checks Top of Descent
 	if (todCalc || !tod) {
-		if (next) {
+		if (hasRestriction) {
 			tod = getRouteDistance(fmc.waypoints.route.length) - nextDist;
 			tod += targetDist;
 		} else {
 			tod = getTargetDist(cruise - arrivalAlt);
 		}
 		tod = Math.round(tod);
-		$('#todInput').val(tod + '').change();
+		$('#todInput').val('' + tod).change();
 	}
 
-	if (spd) $("#Qantas94Heavy-ap-spd > input").val("" + spd).change();
-	if (vs) $("#Qantas94Heavy-ap-vs > input").val("" + vs).change();
-	if (alt) $("#Qantas94Heavy-ap-alt > input").val("" + alt).change();
+	if (spd && tSpd) $('#Qantas94Heavy-ap-spd > input').val('' + spd).change();
+	if (vs && tVS) $('#Qantas94Heavy-ap-vs > input').val('' + vs).change();
+	if (alt && tAlt) $('#Qantas94Heavy-ap-alt > input').val('' + alt).change();
 
 	updatePhase();
 }
 
-// Updates plane's flight log
+/**
+ * Updates plane's flight log, set on a timer
+ *
+ * @param [optional]{String} other Updates the log with other as extra info
+ */
 var logTimer = setInterval(updateLog, 120000);
 function updateLog (other) {
-	if (!ges.pause) {
+	if (!ges.pause && !flight.recorder.playing && !flight.recorder.paused) {
 		var spd = Math.round(ges.aircraft.animationValue.ktas);
 		var hdg = Math.round(ges.aircraft.animationValue.heading360);
 		var alt = Math.round(ges.aircraft.animationValue.altitude);
@@ -217,10 +302,11 @@ function updateLog (other) {
 	} else logTimer = setInterval(updateLog, 30000);
 }
 
-// @TODO check for keydown events
-// Helper method to check for gear retraction and extension
+/**
+ * Checks for gear retraction and extension for log, set on a timer
+ */
 var gearTimer = setInterval(checkGear, 12000);
-function checkGear() {
+function checkGear () {
 	if (ges.aircraft.animationValue.gearPosition !== ges.aircraft.animationValue.gearTarget) {
 		if (ges.aircraft.animationValue.gearTarget === 1) updateLog('Gear Up');
 		else updateLog('Gear Down');
@@ -230,18 +316,21 @@ function checkGear() {
 	else gearTimer = setInterval(checkGear, 60000);
 }
 
-// @TODO check for keydown events
-// Helper method to check for flaps target
+/**
+ * Checks for flaps target and position for log, set on a timer
+ */
 var flapsTimer = setInterval(checkFlaps, 5000);
-function checkFlaps() {
+function checkFlaps () {
 	if (ges.aircraft.animationValue.flapsPosition !== ges.aircraft.animationValue.flapsTarget) {
 		updateLog('Flaps set to ' + ges.aircraft.animationValue.flapsTarget);
 	}
 }
 
-// Helper method to check for overspeed under 10000 feet
+/**
+ * Checks for overspeed under 10000 feet for log, set on a timer
+ */
 var speedTimer = setInterval(checkSpeed, 15000);
-function checkSpeed() {
+function checkSpeed () {
 	var kcas = ges.aircraft.animationValue.kcas;
 	var altitude = ges.aircraft.animationValue.altitude;
 	if (kcas > 255 && altitude < 10000) {
@@ -252,24 +341,42 @@ function checkSpeed() {
 	else speedTimer = setInterval(checkSpeed, 30000);
 }
 
-// Updates plane's phase of flying: climb, cruise, or descent
-function updatePhase() {
+/**
+ * Updates plane's phase of flying: climb, cruise, or descent
+ *
+ * @description Phase contains "climb," "cruise," and "descent"
+ * @param <restricted>[optional]{String} p Updates the phase to "p"
+ * @TODO add a better logic, especially near the cruise phase
+ */
+function updatePhase (p) {
+	if ($('#phaseLock').hasClass('btn-danger')) return; // locked
+	if (p) {
+		phase = p;
+		console.log('Phase set to ' + phase);
+		$('#phaseBtn').text(phase.substring(0,1).toUpperCase() + phase.substring(1));
+		return;
+	}
+	var original = phase;
 	var alt = 100 * Math.round(ges.aircraft.animationValue.altitude / 100);
 	if (ges.aircraft.groundContact) {
 		phase = "climb";
-		console.log('Phase set to climb');
 	} else {
 		if (phase != "cruise" && alt == cruise) {
 			phase = "cruise";
-			console.log('Phase set to cruise');
 		} else if (phase == "cruise" && alt != cruise) {
 			phase = "descent";
-			console.log('Phase set to descent');
 		}
 	}
+	if (original !== phase) updatePhase(phase);
 }
 
-// Prints plane's progress to the UI
+/**
+ * Prints plane's progress to the UI
+ *
+ * @param {Number} flightdist The total flight distance
+ * @param {Number} nextdist The distance to the next waypoint
+ * @param {Array} times An array of the time: [hours, minutes]
+ */
 function print (flightdist, nextdist, times) {
 	for (var i = 0; i < times.length; i++) {
 		times[i] = formatTime(times[i]);
@@ -288,8 +395,13 @@ function print (flightdist, nextdist, times) {
 	$('#nextETE').text(times[4]);
 }
 
-// Gets each plane's flight parameters, for VNAV
-function getFlightParameters(aircraft) {
+/**
+ * Gets each plane's flight parameters, for VNAV
+ *
+ * @param {String} aircraft The aircraft name
+ * @return {Array} vertical speed and speed
+ */
+function getFlightParameters (aircraft) {
 	var spd, vs;
 	var gndElev = ges.groundElevation * metersToFeet;
 	var a = ges.aircraft.animationValue.altitude;
@@ -306,15 +418,16 @@ function getFlightParameters(aircraft) {
 			case "a380":
 			case "md11":
 			case "concorde":
+			case "156":
 			case "161":
 			case "162":
 			case "164":
 			case "166":
 			case "167":
-			case "170":
 			case "172":
 			case "183":
 			case "187":
+			case "200":
 				spd = 210;
 				vs = 3000;
 				break;
@@ -327,15 +440,16 @@ function getFlightParameters(aircraft) {
 			case "a380":
 			case "md11":
 			case "concorde":
+			case "156":
 			case "161":
 			case "162":
 			case "164":
 			case "166":
 			case "167":
-			case "170":
 			case "172":
 			case "183":
 			case "187":
+			case "200":
 				spd = 245;
 				vs = 2500;
 				break;
@@ -348,6 +462,7 @@ function getFlightParameters(aircraft) {
 			case "a380":
 			case "md11":
 			case "concorde":
+			case "156":
 			case "161":
 			case "164":
 			case "167":
@@ -359,7 +474,7 @@ function getFlightParameters(aircraft) {
 				break;
 			case "162":
 			case "166":
-			case "170":
+			case "200":
 				spd = 290;
 				vs = 2200;
 				break;
@@ -371,6 +486,7 @@ function getFlightParameters(aircraft) {
 			switch (aircraft) {
 			case "concorde":
 			case "a380":
+			case "156":
 			case "161":
 			case "167":
 			case "172":
@@ -386,7 +502,7 @@ function getFlightParameters(aircraft) {
 				break;
 			case "162":
 			case "166":
-			case "170":
+			case "200":
 				spd = 295;
 				vs = 1800;
 				break;
@@ -397,6 +513,7 @@ function getFlightParameters(aircraft) {
 			if (isMach) switchMode();
 			switch (aircraft) {
 			case "a380":
+			case "156":
 			case "161":
 			case "167":
 			case "172":
@@ -412,9 +529,9 @@ function getFlightParameters(aircraft) {
 			case "162":
 			case "164":
 			case "166":
-			case "170":
 			case "183":
 			case "187":
+			case "200":
 				vs = 1500;
 				break;
 			default:
@@ -425,10 +542,11 @@ function getFlightParameters(aircraft) {
 			switch (aircraft) {
 			case "162":
 			case "166":
-			case "170":
+			case "200":
 				spd = 0.76;
 				break;
 			case "a380":
+			case "156":
 			case "161":
 			case "167":
 			case "172":
@@ -451,8 +569,10 @@ function getFlightParameters(aircraft) {
 			if (!isMach) switchMode();
 			switch (aircraft) {
 			case "162":
+				spd = 0.785;
+				break;
 			case "166":
-			case "170":
+			case "200":
 				spd = 0.78;
 				break;
 			case "161":
@@ -460,6 +580,7 @@ function getFlightParameters(aircraft) {
 				spd = 0.84;
 				break;
 			case "a380":
+			case "156":
 			case "167":
 				spd = 0.85;
 				break;
@@ -503,6 +624,7 @@ function getFlightParameters(aircraft) {
 					vs = -3600;
 					break;
 				case "a380":
+				case "156":
 				case "161":
 				case "167":
 				case "172":
@@ -517,8 +639,8 @@ function getFlightParameters(aircraft) {
 				case "162":
 				case "164":
 				case "166":
-				case "170":
 				case "187":
+				case "200":
 					spd = 0.77;
 					vs = -2300;
 					break;
@@ -530,12 +652,13 @@ function getFlightParameters(aircraft) {
 				switch (aircraft) {
 				case "162":
 				case "166":
-				case "170":
+				case "200":
 					spd = 295;
 					vs = -2100;
 					break;
 				case "a380":
 				case "md11":
+				case "156":
 				case "161":
 				case "164":
 				case "167":
@@ -558,15 +681,16 @@ function getFlightParameters(aircraft) {
 				case "a380":
 				case "md11":
 				case "concorde":
+				case "156":
 				case "161":
 				case "162":
 				case "164":
 				case "166":
 				case "167":
-				case "170":
 				case "172":
 				case "183":
 				case "187":
+				case "200":
 					spd = 280;
 					vs = -1800;
 					break;
@@ -580,13 +704,17 @@ function getFlightParameters(aircraft) {
 	return [spd, vs];
 }
 
-// Activate a waypoint
+/**
+ * Activates a waypoint or deactivates if the waypoint is already activated
+ *
+ * @param {Number} n The index to be activated or deactivated
+ */
 function activateLeg (n) {
 	if (fmc.waypoints.nextWaypoint != n) {
 		if (n <= fmc.waypoints.route.length) {
 			fmc.waypoints.nextWaypoint = n;
 			var wpt = fmc.waypoints.route[fmc.waypoints.nextWaypoint - 1];
-			if (wpt[3]) {
+			if (wpt[4]) {
 				$('#Qantas94Heavy-ap-icao > input').val(wpt[0]).change();
 			} else {
 				$('#Qantas94Heavy-ap-gc-lat > input').val(wpt[1]).change();
@@ -606,26 +734,48 @@ function activateLeg (n) {
 	}
 }
 
-// Returns the next waypoint that has an altitude restriction
-function getNextWaypointWithAltRestriction() {
+/**
+ * Gets the next waypoint that has an altitude restriction
+ *
+ * @return The index of the waypoint if eligible,
+ * 		   -1 if not eligible
+ */
+function getNextWaypointWithAltRestriction () {
 	for (var i = fmc.waypoints.nextWaypoint; i <= fmc.waypoints.route.length; i++) {
-		if (!!fmc.waypoints.route[i - 1][3]) return i;
+		if (fmc.waypoints.route[i - 1][3]) return i;
 	}
+	return -1;
 }
 
-// Helper method for log, formats the time
+/**
+ * Helper method for log, formats the time
+ * 
+ * @param {Array} time An array of the time: [hours, minutes]
+ * @return {String} Formatted time: "hours : minutes"
+ */
 function formatTime (time) {
 	time[1] = checkZeros(time[1]);
 	return time[0] + ":" + time[1];
 }
 
-// Helper method, format zeros
+/**
+ * Helper method, format zeros
+ *
+ * @param {Number} i The number to be checked
+ * @return {String} The original number with 0's added
+ */
 function checkZeros (i) {
 	if (i < 10) i = "0" + i;
 	return i;
 }
 
-// Helper method for log, check the eligibility of the time
+/**
+ * Helper method to make sure that a time is eligible
+ *
+ * @param {Number} h The hours
+ * @param {Number} m The minutes
+ * @return {Array} Array of eligible time, [h, m]
+ */
 function timeCheck (h, m) {
 	if (m >= 60) {
 		m -= 60;
@@ -635,7 +785,13 @@ function timeCheck (h, m) {
 	return [h, m];
 }
 
-// Gets "Estimated Time En-Route"
+/**
+ * Gets "Estimated Time En-Route"
+ *
+ * @param {Number} The distance to the destination
+ * @param {Boolean} a Is the aircraft in arrival
+ * @return {Array} The time after <code>timeCheck(h, m)</code>
+ */
 function getete (d, a) {
 	var hours = d / ges.aircraft.animationValue.ktas;
 	var h = parseInt(hours);
@@ -644,7 +800,13 @@ function getete (d, a) {
 	return timeCheck(h, m);
 }
 
-// Gets "Estimated Time of Arrival"
+/**
+ * Gets "Estimated Time of Arrival"
+ *
+ * @param {Number} hours Hours
+ * @param {Number} minutes Minutes
+ * @return {Array} The timer after <code>timeCheck(hours, minutes)</code>
+ */
 function geteta (hours, minutes) {
 	var date = new Date();
 	var h = date.getHours();
@@ -654,7 +816,12 @@ function geteta (hours, minutes) {
 	return timeCheck(h, m);
 }
 
-// Returns the full route distance, with waypoints
+/**
+ * Computes the full route distance with waypoints until index
+ * 
+ * @param {Number} end The index of the end of the route to be calculated
+ * @return {Number} The route distance
+ */
 function getRouteDistance (end) {
 	var loc = ges.aircraft.llaLocation || [0, 0, 0];
 	var start = fmc.waypoints.nextWaypoint || 0;
@@ -673,7 +840,12 @@ function getRouteDistance (end) {
 	return total;
 }
 
-// Returns the distance to start descent based on the altitude difference to the next waypoint
+/**
+ * Computes the distance needed to climb or descend to a certain altitude from current altitude
+ * 
+ * @param {Number} deltaAlt The altitude difference
+ * @return {Number} The distance
+ */
 function getTargetDist (deltaAlt) {
 	var targetDist;
 	if (deltaAlt < 0) {
@@ -684,7 +856,12 @@ function getTargetDist (deltaAlt) {
 	return targetDist;
 }
 
-// Returns the turning distance for an aircraft to be on course
+/**
+ * Computes the turning distance to next waypoint for an aircraft to be on course
+ * 
+ * @param {Number} angle Angle of turning
+ * @return {Number} The turning distance
+ */
 function getTurnDistance(angle) {
 	var v = ges.aircraft.animationValue.kcas;
 	var r = 0.107917 * Math.pow(Math.E, 0.0128693 * v);
@@ -692,22 +869,40 @@ function getTurnDistance(angle) {
 	return r * Math.tan(a / 2) + 0.20;
 }
 
-// Computes and returns the ground speed of the aircraft
-fmc.math.getGroundSpeed = function() {
+/**
+ * Computes the ground speed of the aircraft
+ * 
+ * @return {Number} The ground speed of the aircraft
+ */
+fmc.math.getGroundSpeed = function () {
 	var tas = ges.aircraft.animationValue.ktas;
 	var vs = (60 * ges.aircraft.animationValue.climbrate) * feetToNM;
 	console.log("tas: " + tas + ", vs: " + vs);
 	return Math.sqrt(tas * tas - vs * vs);
 };
 
-// Computes and returns the climb rate of the aircraft
+/**
+ * Computes the climb rate with an altitude restriction
+ * 
+ * @param {Number} deltaAlt The altitude difference
+ * @param {Number} nextDist The distance to the restriction point
+ * @return {Number} The climb rate necessary to attain the restriction
+ */
 fmc.math.getClimbrate = function (deltaAlt, nextDist) {
 	var gs = fmc.math.getGroundSpeed();
 	var vs = 100 * Math.round((gs * (deltaAlt / (nextDist * nmToFeet)) * nmToFeet / 60) / 100);
 	return vs;
 };
 
-// Returns the distance between two sets of coordinates
+/**
+ * Computes the distance between two sets of coordinates
+ * 
+ * @param {Number} lat1 Latitude of first coordinate
+ * @param {Number} lon1 Longetude of first coordinate
+ * @param {Number} lat2 Latitude of second coordinate
+ * @param {Number} lon2 Longetude of second coordinate
+ * @return {Number} The distance computed, in nautical miles
+ */
 fmc.math.getDistance = function (lat1, lon1, lat2, lon2) {
 	var math = fmc.math;
 	var dlat = math.toRadians(lat2 - lat1);
@@ -719,7 +914,15 @@ fmc.math.getDistance = function (lat1, lon1, lat2, lon2) {
 	return math.earthRadiusNM * c;
 };
 
-// Retuns the bearing between two coordinates
+/**
+ * Computes the bearing between two sets of coordinates
+ * 
+ * @param {Number} lat1 Latitude of first coordinate
+ * @param {Number} lon1 Longetude of first coordinate
+ * @param {Number} lat2 Latitude of second coordinate
+ * @param {Number} lon2 Longetude of second coordinate
+ * @return {Number} The bearing computed, in degrees 360 format
+ */
 fmc.math.getBearing = function (lat1, lon1, lat2, lon2) {
 	var math = fmc.math;
 	lat1 = math.toRadians(lat1);
@@ -732,7 +935,13 @@ fmc.math.getBearing = function (lat1, lon1, lat2, lon2) {
 	return brng;
 };
 
-// Access autopilot_pp library and find the coordinates for the waypoints
+/**
+ * Accesses autopilot_pp library and find the coordinates for the waypoints
+ * 
+ * @param {String} wpt The waypoint to check for eligibility
+ * @return {Array} Array of coordinates if eligible, 
+ *         {Boolean} false otherwise
+ */
 fmc.waypoints.getCoords = function (wpt) {
 	if (autopilot_pp.require('icaoairports')[wpt]) {
 		return autopilot_pp.require('icaoairports')[wpt];
@@ -741,7 +950,12 @@ fmc.waypoints.getCoords = function (wpt) {
 	} else return false;
 };
 
-// Helper method, format the coordinates
+/**
+ * Turns the coordinate entered from minutes-seconds format to decimal format
+ * 
+ * @param {String} a Coordinate in minutes-seconds format
+ * @return {Number} Coordinate in decimal format
+ */
 fmc.waypoints.formatCoords = function (a) {
 	if (a.indexOf(' ') > -1) {
 		var array = a.split(' ');
@@ -754,7 +968,11 @@ fmc.waypoints.formatCoords = function (a) {
 	} else return Number(a);
 };
 
-// Turn a skyvector link or a normal waypoint input (seperated by spaces) to waypoints
+/**
+ * Turns a SkyVector link, normal waypoints input, or shared waypoints string into waypoints
+ * 
+ * @param {String} url A SkyVector Link, an input of waypoints, or a shared/generated route
+ */
 fmc.waypoints.toRoute = function (url) {
 	if (url.indexOf('["') === 0) fmc.waypoints.loadFromSave(url);
 	else {
@@ -769,7 +987,7 @@ fmc.waypoints.toRoute = function (url) {
 
 		if (isSkyvector) str = url.substring(index + 4).trim().split(" ");
 		else {
-			str = url.trim().toUpperCase().split(" ");
+			str = url.trim().toUpperCase().split("%20");
 			for (var i = 0; i < str.length; i++)
 				if (str[i].length > 5 || str[i].length < 1 || !(/^\w+$/.test(str[i])))
 					isWaypoints = false;
@@ -807,8 +1025,10 @@ fmc.waypoints.toRoute = function (url) {
 	}
 };
 
-// Adds waypoint input field
-fmc.waypoints.addWaypoint = function() {
+/**
+ * Adds 1 waypoint input field
+ */
+fmc.waypoints.addWaypoint = function () {
 	var waypoints = fmc.waypoints;
 	waypoints.route.length++;
 	var n = waypoints.route.length;
@@ -951,7 +1171,11 @@ fmc.waypoints.addWaypoint = function() {
 		).appendTo('#waypoints');
 };
 
-// Remove waypoint at index n
+/**
+ * Removes a waypoint
+ * 
+ * @param {Number} n The index of which will be removed
+ */
 fmc.waypoints.removeWaypoint = function (n) {
 	$('#waypoints tr:nth-child(' + (n + 1) + ')').remove();
 	fmc.waypoints.route.splice((n - 1), 1);
@@ -960,27 +1184,34 @@ fmc.waypoints.removeWaypoint = function (n) {
 	}
 };
 
-// Saves the waypoints data into localStorage
-fmc.waypoints.saveData = function() {
-	localStorage.removeItem('fmcWaypoints');
-	if (fmc.waypoints.route) {
-		var route = fmc.waypoints.route;
-		var arr = JSON.stringify([$('#departureInput').val(), $('#arrivalInput').val(), $('#flightNumInput').val(), route]);
+/**
+ * Saves the waypoints data into localStorage
+ */
+fmc.waypoints.saveData = function () {
+	if (fmc.waypoints.route.length < 1 || !fmc.waypoints.route[0][0]) {
+		alert ("There is no route to save");
+	} else {
+		localStorage.removeItem('fmcWaypoints');
+		var arr = fmc.waypoints.toRouteString();
 		localStorage.setItem ("fmcWaypoints", arr);
-	} else alert ("There is no route to save");
+	}
 };
 
-// Retrieves the saved data and adds to the waypoint list
+/**
+ * Retrieves the saved data and adds to the waypoint list
+ *
+ * @param {String} arg The generated route
+ */
 fmc.waypoints.loadFromSave = function (arg) {
 	
 /**
- * The argument passed in or the localStorage is a 3D array 
- * in String format. arr is the array after JSON.parse 
+ * The argument passed in [optional] or the localStorage is a 
+ * 3D array in String format. arr is the array after JSON.parse 
  *	
- * arr[0] Departure input
- * arr[1] Arrival Input
- * arr[2] Flight Number
- * arr[3] 2D array, the route
+ * @param {String} arr[0] Departure input
+ * @param {String} arr[1] Arrival Input
+ * @param {String} arr[2] Flight Number
+ * @param {Array} arr[3] 2D array, the route
  */
 	
 	arg = arg || localStorage.getItem('fmcWaypoints');
@@ -997,7 +1228,7 @@ fmc.waypoints.loadFromSave = function (arg) {
 		}
 		// JSON.stringify turns undefined into null; this loop turns it back
 		route.forEach(function (wpt) {
-			if (!wpt[3] || wpt[3] == null) wpt[3] = undefined;
+			if (!wpt[3] || wpt[3] == null || wpt[3] == 0) wpt[3] = undefined;
 		});
 		
 		if (arr[0]) $('#departureInput').val(arr[0]).change();
@@ -1008,7 +1239,8 @@ fmc.waypoints.loadFromSave = function (arg) {
 			waypoints.addWaypoint();
 			$('#waypoints input.wpt:eq(' + i + ')').val(route[i][0]).change(); // Input the fix
 			
-			if (!route[i][4]) { // If the waypoint is not eligible or a duplicate
+			// If the waypoint is not eligible or a duplicate
+			if (!route[i][4] || !$('#waypoints input.lat:eq(' + i + ')').val()) {
 				$('#waypoints input.lat:eq(' + i + ')').val(route[i][1]).change(); // Input the lat.
 				$('#waypoints input.lon:eq(' + i + ')').val(route[i][2]).change(); // Input the lon.
 			}
@@ -1016,22 +1248,35 @@ fmc.waypoints.loadFromSave = function (arg) {
 			if (route[i][3]) // If there is an altitude restriction
 				$('#waypoints input.alt:eq(' + i + ')').val(route[i][3]).change();
 		}
+		// Auto-saves the data once again
+		waypoints.saveData();
+		
 	} else alert ("You did not save the waypoints or you cleared the browser's cache");
+};
+
+// Adds a confirm window to prevent accidental reset
+ges.resetFlight = function () {
+	if (window.confirm('Reset Flight?')) {
+		if (ges.lastFlightCoordinates) {
+			ges.flyTo(ges.lastFlightCoordinates, true);
+			updateLog('Flight reset');
+		}
+	}
+};
+
+// Tracks pause event to log
+ges.togglePause = function () {
+	if (!ges.pause) {
+		updateLog('Flight paused');
+		ges.doPause();
+	} else {
+		ges.undoPause();
+		updateLog('Flight resumed');
+	}
 };
 
 // FMC html elements
 fmc.ui = {
-// FMC button
-button: $('<button>')
-	.addClass('btn btn-success gefs-stopPropagation')
-	.attr('type', 'button')
-	.attr('data-toggle', 'modal')
-	.attr('data-target', '#fmcModal')
-	.css('margin-left','1px')
-	.text('FMC ')
-	.append( $('<i>').addClass('icon-list-alt'))
-	.appendTo('div.setup-section:nth-child(2)'),
-
 // FMC modal UI
 modal: $('<div>')
 	.addClass('modal hide gefs-stopPropagation')
@@ -1344,47 +1589,133 @@ modal: $('<div>')
 						.addClass('tab-pane')
 						.attr('id','vnav')
 						.append(
-							
-						// AUTO-CLIMB/DESCENT, CRUISE ALT ROW
+						// AUTO-CLIMB/DESCENT, CRUISE ALT ROW, PHASE, TOGGLE
 						$('<table>')
 							.append(
 							$('<tr>')
 								.append(
 								$('<td>')
 									.append(
-									$('<button>')
-										.addClass('btn')
-										.attr('id','vnavButton')
-										.text('VNAV ')
-										.append( $('<i>').addClass('icon icon-resize-vertical'))
-										.click(function() {
-											toggleVNAV();
-										})
+									$('<div>')
+    								.addClass('input-prepend input-append')
+   							 		.append(
+        						 		$('<button>')
+        									.addClass('btn')
+        									.attr('id', 'vnavButton')
+        									.text('VNAV ')
+        									.append($('<i>').addClass('icon icon-resize-vertical'))
+        									.click(function () {
+        										toggleVNAV();
+        									})
+									, 	$('<span>')
+        									.addClass('add-on')
+        									.text('Cruise Alt.')
+									, 	$('<input>')
+        									.attr('type', 'number')
+        									.attr('step', '100')
+        									.attr('min', '0')
+        									.attr('max', '100000')
+        									.attr('placeholder', 'ft')
+        									.css('width', '80px')
+        									.change(function () {
+            									cruise = $(this).val();
+            									console.log("Cruise Alt set to " + cruise + " ft.");
+        									})
+    									)
 									)
+								)	
+						,	$('<tr>')
+								.append(
+								/*Flight Phase*/
+								$('<td>')
+									.append(
+									$('<div>')
+										.addClass('input-prepend input-append')
+										.append(
+										$('<span>')
+											.addClass('add-on')
+											.text('Phase')
+									,	$('<button>')
+											.addClass('btn btn-info')
+											.attr('id', 'phaseBtn')
+											.text('Climb')
+											.css('height', '30px')
+											.css('width', '77px')
+											.click(function() {
+												var text = $(this).text().toLowerCase();
+												var phases = ["climb", "cruise", "descent"];
+												
+												for (var i = 0; i < phases.length; i++) {
+													if (text === phases[i]) {
+														if (i == 2) {
+															updatePhase(phases[0]);
+															break;
+														} else {
+															updatePhase(phases[i+1]);
+															break;
+														}
+													}
+												}
+												
+											})
+									,	$('<button>')
+											.addClass('btn btn-default')
+											.attr('id', 'phaseLock')
+											.append($('<i class="icon-lock"></i>'))
+											.click(function() {
+												if ($(this).hasClass('btn-default')) {
+													$(this).removeClass('btn-default').addClass('btn-danger');
+													console.log('Flight phase locked');
+												} else {
+													$(this).removeClass('btn-danger').addClass('btn-default');
+													console.log('Flight phase unlocked');
+												}
+											})
+										)	
+									)
+								/*VNAV Toggle Buttons*/
 							,	$('<td>')
 									.append(
 									$('<div>')
-										.css('margin-top', '5px')
 										.addClass('input-prepend input-append')
-										.append( 
-										$('<span>')
-											.addClass('add-on')
-											.text('Cruise Alt.')
-									,	$('<input>')
-											.attr('type', 'number')
-											.attr('step', '100')
-											.attr('min', '0')
-											.attr('max', '100000')
-											.attr('placeholder', 'ft')
-											.css('width', '80px')
-											.change(function() {
-												cruise = $(this).val();
-												console.log("Cruise Alt set to " + cruise + " ft.");
-											})
-										)
+										.append(
+												$('<button>')
+													.addClass('btn btn-primary')
+													.attr('id', 'tAlt')
+													.text('ALT')
+													.css('width', '80px')
+													.click(function(){
+														if ($(this).hasClass('btn-primary'))
+															$(this).removeClass('btn-primary').addClass('btn-default');
+														else
+															$(this).removeClass('btn-default').addClass('btn-primary');
+													})
+											,	$('<button>')
+													.addClass('btn btn-primary')
+													.attr('id', 'tSpd')
+													.text('SPD')
+													.css('width', '80px')
+													.click(function(){
+														if ($(this).hasClass('btn-primary'))
+															$(this).removeClass('btn-primary').addClass('btn-default');
+														else
+															$(this).removeClass('btn-default').addClass('btn-primary');
+													})
+											,	$('<button>')
+													.addClass('btn btn-primary')
+													.attr('id', 'tVS')
+													.text('V/S')
+													.css('width', '80px')
+													.click(function(){
+														if ($(this).hasClass('btn-primary'))
+															$(this).removeClass('btn-primary').addClass('btn-default');
+														else
+															$(this).removeClass('btn-default').addClass('btn-primary');
+													})
+											)
 									)
 								)
-							)
+							)		
 						)
 					
 					// Progress tab
@@ -1395,7 +1726,7 @@ modal: $('<div>')
 						$('<table>')
 							.append(
 							$('<tr>')
-								.append( 
+								.append(
 								$('<td>')
 									.append(
 									$('<div>')
@@ -1661,7 +1992,18 @@ externalDist: $('<div>')
 				.attr('id', 'externaldist')
 			)
 		)
-	).appendTo('td.gefs-f-standard')
+	).appendTo('td.gefs-f-standard'), 
+	
+// FMC button
+button: $('<button>')
+	.addClass('btn btn-success gefs-stopPropagation')
+	.attr('type', 'button')
+	.attr('data-toggle', 'modal')
+	.attr('data-target', '#fmcModal')
+	.css('margin-left','1px')
+	.text('FMC ')
+	.append( $('<i>').addClass('icon-list-alt'))
+	.appendTo('div.setup-section:nth-child(2)')
 };
 	
 // Hides backdrop for the modal	
@@ -1670,37 +2012,18 @@ $('#fmcModal').modal({
 	show: false
 });
 
-// "T" Keyup bug fix
+// Stops immediate keyup actions in the FMC Modal
 $('#fmcModal').keyup(function(event) {
 	event.stopImmediatePropagation();
 });
 
-// Initialize to 1 waypoint input field
+// Initializes to 1 waypoint input field on load
 fmc.waypoints.addWaypoint();
 
-// Adds a confirm window to prevent accidental reset
-ges.resetFlight = function() {
-	if (window.confirm('Reset Flight?')) {
-		if (ges.lastFlightCoordinates) {
-			ges.flyTo(ges.lastFlightCoordinates, true);
-			updateLog('Flight reset');
-		}
-	}
-};
-
-// Tracks pause event
-ges.togglePause = function() {
-	if (!ges.pause) {
-		updateLog('Flight paused');
-		ges.doPause();
-	} else {
-		ges.undoPause();
-		updateLog('Flight resumed');
-	}
-};
-
-// Enables VNAV function
-function toggleVNAV() {
+/**
+ * Enables VNAV if not activated, disables if activated
+ */
+function toggleVNAV () {
 	if (VNAV) {
 		VNAV = false;
 		$('#vnavButton').removeClass('btn btn-warning').addClass('btn');
@@ -1712,8 +2035,14 @@ function toggleVNAV() {
 	} else alert('Please enter a cruising altitude.');
 }
 
-// Shifts the waypoint n towards direction d 1 step; move element r to correct position
-function shiftWaypoint(r, n, d) {
+/**
+ * Shifts a waypoint up or down one step
+ *
+ * @param {jQuery element} r The element to be moved in the UI
+ * @param {Number} n Index of this waypoint
+ * @param <restricted>{String} d Direction of shifting, "up" or "down"
+ */
+function shiftWaypoint (r, n, d) {
 	var waypoints = fmc.waypoints;
 	console.log("Waypoint #" + n + " moved " + d);
 	if (!(d == "up" && n == 1 || d == "down" && n == waypoints.route.length)) {
@@ -1737,13 +2066,20 @@ function shiftWaypoint(r, n, d) {
 	}
 }
 
-// Clears the log
-function removeLogData() {
+/**
+ * Clears the log
+ */
+function removeLogData () {
 	$('#logData tr').remove('.data');
 }
 
-// Prototype, moves array elements
-Array.prototype.move = function(index1, index2) {
+/** 
+ * Defines Array prototype to move an array
+ *
+ * @param {Number} index1 The start index
+ * @param {Number} index2 The end/target index
+ */
+Array.prototype.move = function (index1, index2) {
 	if (index2 >= this.length) {
 		var k = index2 - this.length;
 		while ((k--) + 1) {
