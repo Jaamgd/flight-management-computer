@@ -1680,37 +1680,37 @@ modal: $('<div>')
 										.addClass('input-prepend input-append')
 										.append(
 												$('<button>')
-													.addClass('btn btn-primary')
+													.addClass('btn btn-warning')
 													.attr('id', 'tAlt')
 													.text('ALT')
 													.css('width', '80px')
 													.click(function(){
-														if ($(this).hasClass('btn-primary'))
-															$(this).removeClass('btn-primary').addClass('btn-default');
+														if ($(this).hasClass('btn-warning'))
+															$(this).removeClass('btn-warning').addClass('btn-default');
 														else
-															$(this).removeClass('btn-default').addClass('btn-primary');
+															$(this).removeClass('btn-default').addClass('btn-warning');
 													})
 											,	$('<button>')
-													.addClass('btn btn-primary')
+													.addClass('btn btn-warning')
 													.attr('id', 'tSpd')
 													.text('SPD')
 													.css('width', '80px')
 													.click(function(){
-														if ($(this).hasClass('btn-primary'))
-															$(this).removeClass('btn-primary').addClass('btn-default');
+														if ($(this).hasClass('btn-warning'))
+															$(this).removeClass('btn-warning').addClass('btn-default');
 														else
-															$(this).removeClass('btn-default').addClass('btn-primary');
+															$(this).removeClass('btn-default').addClass('btn-warning');
 													})
 											,	$('<button>')
-													.addClass('btn btn-primary')
+													.addClass('btn btn-warning')
 													.attr('id', 'tVS')
 													.text('V/S')
 													.css('width', '80px')
 													.click(function(){
-														if ($(this).hasClass('btn-primary'))
-															$(this).removeClass('btn-primary').addClass('btn-default');
+														if ($(this).hasClass('btn-warning'))
+															$(this).removeClass('btn-warning').addClass('btn-default');
 														else
-															$(this).removeClass('btn-default').addClass('btn-primary');
+															$(this).removeClass('btn-default').addClass('btn-warning');
 													})
 											)
 									)
