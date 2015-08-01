@@ -169,9 +169,9 @@ function updateVNAV () {
 	var targetReached = targetDist >= nextDist;
 	
 	// Manual override, is toggled
-	var tSpd = $('#tSpd').hasClass('btn-primary');
-	var tAlt = $('#tAlt').hasClass('btn-primary'); 
-	var tVS = $('#tVS').hasClass('btn-primary');
+	var tSpd = $('#tSpd').hasClass('btn-warning');
+	var tAlt = $('#tAlt').hasClass('btn-warning'); 
+	var tVS = $('#tVS').hasClass('btn-warning');
 		
 	console.log('SPD Toggled: ' + tSpd + ', ALT Toggled: ' + tAlt + ', V/S Toggled: ' + tVS);
 	
