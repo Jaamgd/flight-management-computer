@@ -334,8 +334,13 @@ function updatePhase() {
 	var currentAlt = 100 * Math.round(ges.aircraft.animationValue.altitude / 100);
 	if (phase === "climb" && currentAlt === Number(cruise)) {
 		$('#phaseBtn').click();
-	} else if (phase === "cruise" && currentAlt !== Number(cruise)) {
-		$('#phaseBtn').click();
+	} else if (phase === "cruise") {
+		var dist = getRouteDistance(fmc.waypoints.route.length + 1);
+		if (currentAlt !== Number(cruise)) {
+			$('#phaseBtn').click();
+		} else if (dist <= tod) {
+			$('#phaseBtn').click();
+		}
 	}
 }
 
@@ -645,7 +650,7 @@ function getFlightParameters () {
 				default:
 					break;
 				}
-			} else if (a > 12000 + arrivalAlt && a <= 18000) {
+			} else if (a > 12000 + fieldElev && a <= 18000) {
 				if (isMach) switchMode();
 				switch (aircraft) {
 				case "a380":
@@ -2048,4 +2053,5 @@ Array.prototype.move = function (index1, index2) {
 	this.splice(index2, 0, this.splice(index1, 1)[0]);
 	return this;
 };
+
 
