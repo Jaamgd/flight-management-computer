@@ -212,7 +212,7 @@ function updateVNAV () {
 		// If there are no altitude restrictions left on the route
 		else {
 		    vs = params[1];
-		    alt = 12000 + fieldElev;
+			if (currentAlt > 12000 + fieldElev) alt = 12000 + fieldElev;
 		}
 	}
 	
@@ -220,9 +220,9 @@ function updateVNAV () {
 	if (todCalc || !tod) {
 		if (hasRestriction) {
 			tod = getRouteDistance(route.length) - nextDist;
-			tod += targetDist;
+			tod += getTargetDist(targetAlt - cruise);
 		} else {
-			tod = getTargetDist(cruise - fieldElev);
+			tod = getTargetDist(fieldElev - cruise);
 		}
 		tod = Math.round(tod);
 		$('#todInput').val('' + tod).change();
@@ -578,7 +578,7 @@ function getFlightParameters () {
 
 	// DESCENT
 	else if (phase == "descent") {
-		if (a > cruise - 700) {
+		if (a > cruise - 700 && cruise >= 31000) {
 			if (!isMach) switchMode();
 			vs = -1000;
 		} else {
@@ -622,7 +622,7 @@ function getFlightParameters () {
 				default:
 					break;
 				}
-			} else if (a > 18000 && a <= 30000) {
+			} else if (a > 18000 && a < 30000) {
 				if (isMach) switchMode();
 				switch (aircraft) {
 				case "162":
@@ -2053,5 +2053,4 @@ Array.prototype.move = function (index1, index2) {
 	this.splice(index2, 0, this.splice(index1, 1)[0]);
 	return this;
 };
-
 
