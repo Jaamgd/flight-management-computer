@@ -1829,7 +1829,7 @@ modal: $('<div>')
 						.addClass('tab-pane')
 						.attr('id', 'load')
 						.append(
-						$('<th>Enter a SkyVector link, waypoints seperated by spaces, or a generated route</th>'),
+						$('<th>Enter waypoints seperated by spaces or a generated route</th>'),
 						$('<form>')
 							.attr('action','javascript:fmc.waypoints.toRoute(fmc.waypoints.input);')
 							.addClass('form-horizontal')
@@ -1841,8 +1841,8 @@ modal: $('<div>')
 									.append(
 									$('<span>')
 										.addClass('add-on')
-										.text('SkyVector / Waypoints ')
-										.append( $('<i>').addClass('icon-globe'))
+										.text('Waypoints ')
+										.append( $('<i>').addClass('icon-pencil'))
 								,	$('<input>')
 										.attr('type', 'text')
 										.addClass('input-xlarge gefs-stopPropagation')
