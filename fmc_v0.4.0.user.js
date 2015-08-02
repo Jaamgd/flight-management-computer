@@ -2019,6 +2019,9 @@ function toggleVNAV () {
 	} else alert('Please enter a cruising altitude.');
 }
 
+/**
+ * Enables or disables the speed control in VNAV
+ */
 function toggleSpeed() {
 	if ($('#tSpd').hasClass('btn-warning')) {
 		$('#tSpd').removeClass('btn-warning').addClass('btn-default').text('OFF');
