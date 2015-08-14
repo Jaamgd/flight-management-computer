@@ -404,6 +404,7 @@ function getFlightParameters () {
 			case "183":
 			case "187":
 			case "200":
+			case "210":
 				spd = 210;
 				vs = 3000;
 				break;
@@ -426,6 +427,7 @@ function getFlightParameters () {
 			case "183":
 			case "187":
 			case "200":
+			case "210":
 				spd = 245;
 				vs = 2500;
 				break;
@@ -451,6 +453,7 @@ function getFlightParameters () {
 			case "162":
 			case "166":
 			case "200":
+			case "210":
 				spd = 290;
 				vs = 2200;
 				break;
@@ -479,6 +482,7 @@ function getFlightParameters () {
 			case "162":
 			case "166":
 			case "200":
+			case "210":
 				spd = 295;
 				vs = 1800;
 				break;
@@ -508,6 +512,7 @@ function getFlightParameters () {
 			case "183":
 			case "187":
 			case "200":
+			case "210":
 				vs = 1500;
 				break;
 			default:
@@ -519,6 +524,7 @@ function getFlightParameters () {
 			case "162":
 			case "166":
 			case "200":
+			case "210":
 				spd = 0.76;
 				break;
 			case "a380":
@@ -545,6 +551,7 @@ function getFlightParameters () {
 			if (!isMach) switchMode();
 			switch (aircraft) {
 			case "162":
+			case "210":
 				spd = 0.785;
 				break;
 			case "166":
@@ -617,6 +624,7 @@ function getFlightParameters () {
 				case "166":
 				case "187":
 				case "200":
+				case "210":
 					spd = 0.77;
 					vs = -2300;
 					break;
@@ -629,6 +637,7 @@ function getFlightParameters () {
 				case "162":
 				case "166":
 				case "200":
+				case "210":
 					spd = 295;
 					vs = -2100;
 					break;
@@ -667,6 +676,7 @@ function getFlightParameters () {
 				case "183":
 				case "187":
 				case "200":
+				case "210":
 					spd = 280;
 					vs = -1800;
 					break;
@@ -2049,3 +2059,4 @@ Array.prototype.move = function (index1, index2) {
 	this.splice(index2, 0, this.splice(index1, 1)[0]);
 	return this;
 };
+
