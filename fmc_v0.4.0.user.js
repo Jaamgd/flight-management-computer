@@ -5,7 +5,7 @@
 // @match http://www.gefs-online.com/gefs.php*
 // @match http://gefs-online.com/gefs.php*
 // @run-at document-end
-// @version 0.4.7.1505
+// @version 0.4.2
 // @grant none
 // ==/UserScript==
 
@@ -175,6 +175,7 @@ function updateVNAV () {
 		// If there is an altitude restriction somewhere on the route
 		if (hasRestriction) {
 			var totalDist = getTargetDist(cruise - currentAlt) + getTargetDist(targetAlt - cruise);
+			console.log("totalDist: " + totalDist)
 		
 			// Checks to see if the altitude restriction is on the climbing phase or descent phase
 			if (nextDist < totalDist) {
@@ -212,12 +213,12 @@ function updateVNAV () {
 		// If there are no altitude restrictions left on the route
 		else {
 		    vs = params[1];
-			if (currentAlt > 12000 + fieldElev) alt = 12000 + fieldElev;
+			if (currentAlt > 12000 + fieldElev) alt = 100 * Math.round((12000 + fieldElev) / 100);
 		}
 	}
 	
 	// Calculates Top of Descent
-	if (todCalc || !tod) {
+	if (phase === "cruise" && (todCalc || !tod)) {
 		if (hasRestriction) {
 			tod = getRouteDistance(route.length) - nextDist;
 			tod += getTargetDist(targetAlt - cruise);
@@ -949,11 +950,9 @@ fmc.waypoints.formatCoords = function (a) {
  * 
  * @param {String} url A SkyVector Link, an input of waypoints, or a shared/generated route
  */
-fmc.waypoints.toRoute = function (url) {
-	if (url.indexOf('["') === 0) fmc.waypoints.loadFromSave(url);
-	else {
-		var index = url.indexOf('fpl=');
-		var isSkyvector = url.indexOf('skyvector.com') !== -1 && index !== -1;
+fmc.waypoints.toRoute = function (s) {
+	if (s.indexOf('["') !== 0) {
+		var index = s.indexOf('fpl=');
 		var isWaypoints = true;
 		var departure = $('#wptDeparture')[0].checked;
 		var arrival = $('#wptArrival')[0].checked;
@@ -961,15 +960,12 @@ fmc.waypoints.toRoute = function (url) {
 		var a;
 		var str = [];
 
-		if (isSkyvector) str = url.substring(index + 4).trim().split(" ");
-		else {
-			str = url.trim().toUpperCase().split("%20");
-			for (var i = 0; i < str.length; i++)
+		str = s.trim().toUpperCase().split(" ");
+		for (var i = 0; i < str.length; i++)
 				if (str[i].length > 5 || str[i].length < 1 || !(/^\w+$/.test(str[i])))
 					isWaypoints = false;
-		}
-
-		if (isSkyvector || isWaypoints) {
+		
+		if (isWaypoints) {
 			for (var i = 0; i < n; i++) {
 				fmc.waypoints.removeWaypoint(1);
 			}
@@ -993,12 +989,9 @@ fmc.waypoints.toRoute = function (url) {
 				$('#arrivalInput').val(wpt).change();
 			}
 		} else {
-			if (!isWaypoints) {
-				if (!isSkyvector) alert("Invalid Skyvector Link");
-				else alert("Invalid Waypoints Input");
-			}
+			alert("Invalid Waypoints Input");
 		}
-	}
+	} else fmc.waypoints.loadFromSave(url);
 };
 
 /**
@@ -2056,4 +2049,3 @@ Array.prototype.move = function (index1, index2) {
 	this.splice(index2, 0, this.splice(index1, 1)[0]);
 	return this;
 };
-
