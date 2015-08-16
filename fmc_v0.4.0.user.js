@@ -404,7 +404,11 @@ function getFlightParameters () {
 			case "183":
 			case "187":
 			case "200":
+			case "207":
 			case "210":
+			case "211":
+			case "212":
+			case "213":
 				spd = 210;
 				vs = 3000;
 				break;
@@ -427,7 +431,11 @@ function getFlightParameters () {
 			case "183":
 			case "187":
 			case "200":
+			case "207":
 			case "210":
+			case "211":
+			case "212":
+			case "213":
 				spd = 245;
 				vs = 2500;
 				break;
@@ -447,6 +455,10 @@ function getFlightParameters () {
 			case "172":
 			case "183":
 			case "187":
+			case "207":
+			case "211":
+			case "212":
+			case "213":
 				spd = 295;
 				vs = 2200;
 				break;
@@ -470,6 +482,10 @@ function getFlightParameters () {
 			case "167":
 			case "172":
 			case "183":
+			case "207":
+			case "211":
+			case "212":
+			case "213":
 				spd = 310;
 				vs = 1800;
 				break;
@@ -497,6 +513,10 @@ function getFlightParameters () {
 			case "161":
 			case "167":
 			case "172":
+			case "207":
+			case "211":
+			case "212":
+			case "213":
 				vs = 1500;
 				break;
 			default:
@@ -532,6 +552,10 @@ function getFlightParameters () {
 			case "161":
 			case "167":
 			case "172":
+			case "207":
+			case "211":
+			case "212":
+			case "213":
 				spd = 0.82;
 				break;
 			case "md11":
@@ -565,6 +589,10 @@ function getFlightParameters () {
 			case "a380":
 			case "156":
 			case "167":
+			case "207":
+			case "211":
+			case "212":
+			case "213":
 				spd = 0.85;
 				break;
 			case "md11":
@@ -611,6 +639,10 @@ function getFlightParameters () {
 				case "161":
 				case "167":
 				case "172":
+				case "207":
+				case "211":
+				case "212":
+				case "213":
 					spd = 0.83;
 					vs = -2400;
 					break;
@@ -650,6 +682,10 @@ function getFlightParameters () {
 				case "172":
 				case "183":
 				case "187":
+				case "207":
+				case "211":
+				case "212":
+				case "213":
 					spd = 310;
 					vs = -2200;
 					break;
@@ -677,6 +713,10 @@ function getFlightParameters () {
 				case "187":
 				case "200":
 				case "210":
+				case "207":
+				case "211":
+				case "212":
+				case "213":
 					spd = 280;
 					vs = -1800;
 					break;
@@ -2059,4 +2099,3 @@ Array.prototype.move = function (index1, index2) {
 	this.splice(index2, 0, this.splice(index1, 1)[0]);
 	return this;
 };
-
