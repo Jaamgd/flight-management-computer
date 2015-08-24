@@ -1031,7 +1031,7 @@ fmc.waypoints.toRoute = function (s) {
 		} else {
 			alert("Invalid Waypoints Input");
 		}
-	} else fmc.waypoints.loadFromSave(url);
+	} else fmc.waypoints.loadFromSave(s);
 };
 
 /**
