@@ -130,7 +130,7 @@ button: $('<button>')
 				ges.init = function () {
 					initFMC();
 					oldInit();
-				}
+				};
 			}
 		}, 4);
 	}
