@@ -121,19 +121,12 @@ button: $('<button>')
 
 // Inits FMC
 (function (initFMC) {
-	if (window.ges && ges.map3d) initFMC();
-	else {
-		var timer = setInterval(function () {
-			if (window.ges && ges.init) {
-				clearInterval(timer);
-				var oldInit = ges.init;
-				ges.init = function () {
-					initFMC();
-					oldInit();
-				};
-			}
-		}, 4);
-	}
+	var timer = setInterval(function () {
+		if (window.ges && ges.aircraft && ges.aircraft.animationValue && ges.aircraft.animationValue.altitude) {
+			clearInterval(timer);
+			initFMC();
+		}
+	}, 4);
 })
 (function () {
 
