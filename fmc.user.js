@@ -173,6 +173,7 @@ button: $('<button>')
 				times[3] = geteta(times[2][0], times[2][1]);
 			}
 		}
+		
 		print(flightdist, nextdist, times);
 	}
 
@@ -180,7 +181,6 @@ button: $('<button>')
 	 * Controls LNAV, plane's lateral navigation, set on a timer
 	 */
 	var LNAVTimer = setInterval(updateLNAV, 5000);
-
 	function updateLNAV() {
 		var d = getRouteDistance(fmc.waypoints.nextWaypoint);
 		if (d <= getTurnDistance(60)) {
@@ -453,8 +453,11 @@ button: $('<button>')
 				case "172":
 				case "183":
 				case "187":
+				case "188":
+				case "189":
 				case "200":
 				case "207":
+				case "208":
 				case "211":
 				case "212":
 				case "213":
@@ -479,8 +482,11 @@ button: $('<button>')
 				case "172":
 				case "183":
 				case "187":
+				case "188":
+				case "189":
 				case "200":
 				case "207":
+				case "208":
 				case "211":
 				case "212":
 				case "213":
@@ -502,6 +508,7 @@ button: $('<button>')
 				case "172":
 				case "183":
 				case "187":
+				case "188":
 				case "207":
 				case "211":
 				case "212":
@@ -512,7 +519,9 @@ button: $('<button>')
 				case "162":
 				case "164":
 				case "166":
+				case "189":
 				case "200":
+				case "208":
 					spd = 290;
 					vs = 2200;
 					break;
@@ -538,13 +547,16 @@ button: $('<button>')
 					break;
 				case "md11":
 				case "187":
+				case "188":
 					spd = 300;
 					vs = 1800;
 					break;
 				case "162":
 				case "164":
 				case "166":
+				case "189":
 				case "200":
+				case "208":
 					spd = 295;
 					vs = 1800;
 					break;
@@ -577,7 +589,10 @@ button: $('<button>')
 				case "166":
 				case "183":
 				case "187":
+				case "188":
+				case "189":
 				case "200":
+				case "208":
 					vs = 1500;
 					break;
 				default:
@@ -589,7 +604,9 @@ button: $('<button>')
 				case "162":
 				case "164":
 				case "166":
+				case "189":
 				case "200":
+				case "208":
 					spd = 0.76;
 					break;
 				case "a380":
@@ -605,6 +622,7 @@ button: $('<button>')
 					break;
 				case "md11":
 				case "187":
+				case "188":
 					spd = 0.78;
 					vs = 1200;
 					break;
@@ -623,7 +641,9 @@ button: $('<button>')
 					spd = 0.785;
 					break;
 				case "166":
+				case "189":
 				case "200":
+				case "208":
 					spd = 0.78;
 					break;
 				case "161":
@@ -641,6 +661,7 @@ button: $('<button>')
 					break;
 				case "md11":
 				case "187":
+				case "188":
 					spd = 0.80;
 					break;
 				case "183":
@@ -698,7 +719,10 @@ button: $('<button>')
 					case "164":
 					case "166":
 					case "187":
+					case "188":
+					case "189":
 					case "200":
+					case "208":
 						spd = 0.77;
 						vs = -2300;
 						break;
@@ -711,7 +735,9 @@ button: $('<button>')
 					case "162":
 					case "164":
 					case "166":
+					case "189":
 					case "200":
+					case "208":
 						spd = 295;
 						vs = -2100;
 						break;
@@ -723,6 +749,7 @@ button: $('<button>')
 					case "172":
 					case "183":
 					case "187":
+					case "188":
 					case "207":
 					case "211":
 					case "212":
@@ -752,8 +779,11 @@ button: $('<button>')
 					case "172":
 					case "183":
 					case "187":
+					case "188":
+					case "189":
 					case "200":
 					case "207":
+					case "208":
 					case "211":
 					case "212":
 					case "213":
@@ -2115,14 +2145,14 @@ button: $('<button>')
 ,	$('<iframe frame-border="no" class="gefs-shim-iframe"></iframe>')
 	).appendTo('body');
 
-	// Initializes to 1 waypoint input field on load
-	fmc.waypoints.addWaypoint();
-
 	// Hides backdrop for the modal	
 	$('#fmcModal').modal({
 		backdrop: false,
 		show: false
 	});
+
+	// Initializes to 1 waypoint input field on load
+	fmc.waypoints.addWaypoint();
 
 	// Stops immediate keyup actions in the FMC Modal
 	$('#fmcModal').keyup(function (event) {
