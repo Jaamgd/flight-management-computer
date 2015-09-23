@@ -461,6 +461,7 @@ button: $('<button>')
 				case "211":
 				case "212":
 				case "213":
+				case "222":
 					spd = 210;
 					vs = 3000;
 					break;
@@ -490,6 +491,7 @@ button: $('<button>')
 				case "211":
 				case "212":
 				case "213":
+				case "222":
 					spd = 245;
 					vs = 2500;
 					break;
@@ -513,6 +515,7 @@ button: $('<button>')
 				case "211":
 				case "212":
 				case "213":
+				case "222":
 					spd = 295;
 					vs = 2200;
 					break;
@@ -548,6 +551,7 @@ button: $('<button>')
 				case "md11":
 				case "187":
 				case "188":
+				case "222":
 					spd = 300;
 					vs = 1800;
 					break;
@@ -593,6 +597,7 @@ button: $('<button>')
 				case "189":
 				case "200":
 				case "208":
+				case "222":
 					vs = 1500;
 					break;
 				default:
@@ -623,6 +628,7 @@ button: $('<button>')
 				case "md11":
 				case "187":
 				case "188":
+				case "222":
 					spd = 0.78;
 					vs = 1200;
 					break;
@@ -662,6 +668,7 @@ button: $('<button>')
 				case "md11":
 				case "187":
 				case "188":
+				case "222":
 					spd = 0.80;
 					break;
 				case "183":
@@ -723,6 +730,7 @@ button: $('<button>')
 					case "189":
 					case "200":
 					case "208":
+					case "222":
 						spd = 0.77;
 						vs = -2300;
 						break;
@@ -754,6 +762,7 @@ button: $('<button>')
 					case "211":
 					case "212":
 					case "213":
+					case "222":
 						spd = 310;
 						vs = -2200;
 						break;
@@ -787,6 +796,7 @@ button: $('<button>')
 					case "211":
 					case "212":
 					case "213":
+					case "222":
 						spd = 280;
 						vs = -1800;
 						break;
