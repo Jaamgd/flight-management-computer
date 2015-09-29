@@ -462,6 +462,7 @@ button: $('<button>')
 				case "212":
 				case "213":
 				case "222":
+				case "223":
 					spd = 210;
 					vs = 3000;
 					break;
@@ -492,6 +493,7 @@ button: $('<button>')
 				case "212":
 				case "213":
 				case "222":
+				case "223":
 					spd = 245;
 					vs = 2500;
 					break;
@@ -516,6 +518,7 @@ button: $('<button>')
 				case "212":
 				case "213":
 				case "222":
+				case "223":
 					spd = 295;
 					vs = 2200;
 					break;
@@ -545,6 +548,7 @@ button: $('<button>')
 				case "211":
 				case "212":
 				case "213":
+				case "223":
 					spd = 310;
 					vs = 1800;
 					break;
@@ -579,6 +583,7 @@ button: $('<button>')
 				case "211":
 				case "212":
 				case "213":
+				case "223":
 					vs = 1500;
 					break;
 				default:
@@ -623,6 +628,7 @@ button: $('<button>')
 				case "211":
 				case "212":
 				case "213":
+				case "223":
 					spd = 0.82;
 					break;
 				case "md11":
@@ -664,6 +670,9 @@ button: $('<button>')
 				case "212":
 				case "213":
 					spd = 0.85;
+					break;
+				case "223":
+					spd = 0.855;
 					break;
 				case "md11":
 				case "187":
@@ -714,6 +723,7 @@ button: $('<button>')
 					case "211":
 					case "212":
 					case "213":
+					case "223":
 						spd = 0.83;
 						vs = -2400;
 						break;
@@ -763,6 +773,7 @@ button: $('<button>')
 					case "212":
 					case "213":
 					case "222":
+					case "223":
 						spd = 310;
 						vs = -2200;
 						break;
@@ -797,6 +808,7 @@ button: $('<button>')
 					case "212":
 					case "213":
 					case "222":
+					case "223":
 						spd = 280;
 						vs = -1800;
 						break;
@@ -1082,12 +1094,10 @@ button: $('<button>')
 	 */
 	fmc.waypoints.toRoute = function (s) {
 		if (s.indexOf('["') !== 0) {
-			var index = s.indexOf('fpl=');
 			var isWaypoints = true;
 			var departure = $('#wptDeparture')[0].checked;
 			var arrival = $('#wptArrival')[0].checked;
-			var n = $('#waypoints tbody tr')
-				.length - 1;
+			var n = $('#waypoints tbody tr').length - 1;
 			var a;
 			var str = [];
 
