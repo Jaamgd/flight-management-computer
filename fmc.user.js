@@ -2,127 +2,548 @@
 // @name FMC Extension for GEFS-Online
 // @description This extension (by Ethan Shields) adds an FMC which controls other features included such as auto-climb, auto-descent, progress information, etc.
 // @namespace GEFS-Plugins
-// @match http://www.gefs-online.com/gefs.php*
-// @match http://gefs-online.com/gefs.php*
+// @match http://*gefs-online.com/gefs.php*
+// @match http://localhost:3000/gefs.php*
+// @match http://127.0.0.1:3000/gefs.php*
 // @run-at document-end
-// @version 0.4.3
+// @version 0.5.0
 // @grant none
 // ==/UserScript==
 
-// IMPORTANT: Please disable your original autopilot plugin or delete line:14
-// AP++ v0.8.1 with AIRAC 1505 (waypoints + navaids), for testing purposes
-$('<script type="text/javascript" src="https://dl.dropboxusercontent.com/s/ogrfm3necctimjh/ap_1505.user.js"></script>').appendTo('body');
 
-// fmc library, publicly accessible methods and variables
-window.fmc = {
+//-------------- FMC LIBRARY - publicly accessible methods and variables ----------------
+window.fmc = {};
 
-	math: {
-		/**
-		 * Turns degrees to radians
-		 * 
-		 * @param {Number} degrees The degree to be converted
-		 * @return {Number} Radians of the degree
-		 */
-		toRadians: function (d) {
-			return d * Math.PI / 180;
-		},
-		/**
-		 * Converts radians to degrees
-		 * 
-		 * @param {Number} radians The radian to be converted
-		 * @return {Number} Degree of the radian
-		 */
-		toDegrees: function (r) {
-			return r * 180 / Math.PI;
-		},
-		earthRadiusNM: 3440.06
+fmc.math = {
+	/**
+	 * Turns degrees to radians
+	 * 
+	 * @param {Number} degrees The degree to be converted
+	 * @return {Number} Radians of the degree
+	 */
+	toRadians: function (d) {
+		return d * Math.PI / 180;
 	},
-	waypoints: {
-		input: "",
-		route: [],
-		nextWaypoint: "",
-		/**
-		 * Turns the waypoints into an array
-		 *
-		 * @return {Array} The array of waypoint names
-		 */
-		makeFixesArray: function () {
-			var result = [];
-			var departureVal = $('#departureInput').val();
-			if (departureVal) result.push(departureVal);
-			$('.waypoint td:first-child div > input').each(function() {
-				result.push($(this).val());
-			});
-			var arrivalVal = $('#arrivalInput').val();
-			if (arrivalVal) result.push(arrivalVal);
+	
+	/**
+	 * Converts radians to degrees
+	 * 
+	 * @param {Number} radians The radian to be converted
+	 * @return {Number} Degree of the radian
+	 */
+	toDegrees: function (r) {
+		return r * 180 / Math.PI;
+	},
+	
+	/**
+	 * Computes the ground speed of the aircraft
+	 * 
+	 * @return {Number} The ground speed of the aircraft
+	 */
+	getGroundSpeed: function () {
+		var tas = gefs.aircraft.animationValue.ktas;
+		var vs = (60 * gefs.aircraft.animationValue.climbrate) * feetToNM;
+		console.log("tas: " + tas + ", vs: " + vs);
+		return Math.sqrt(tas * tas - vs * vs);
+	},
+	
+	/**
+	 * Computes the distance between two sets of coordinates
+	 * 
+	 * @param {Number} lat1 Latitude of first coordinate
+	 * @param {Number} lon1 Longetude of first coordinate
+	 * @param {Number} lat2 Latitude of second coordinate
+	 * @param {Number} lon2 Longetude of second coordinate
+	 * @return {Number} The distance computed, in nautical miles
+	 */
+	getDistance: function (lat1, lon1, lat2, lon2) {
+		var math = fmc.math;
+		var dlat = math.toRadians(lat2 - lat1);
+		var dlon = math.toRadians(lon2 - lon1);
+		lat1 = math.toRadians(lat1);
+		lat2 = math.toRadians(lat2);
+		var a = Math.sin(dlat / 2) * Math.sin(dlat / 2) + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dlon / 2) * Math.sin(dlon / 2);
+		var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+		return math.earthRadiusNM * c;
+	},
+	
+	/**
+	 * Computes the bearing between two sets of coordinates
+	 * 
+	 * @param {Number} lat1 Latitude of first coordinate
+	 * @param {Number} lon1 Longetude of first coordinate
+	 * @param {Number} lat2 Latitude of second coordinate
+	 * @param {Number} lon2 Longetude of second coordinate
+	 * @return {Number} The bearing computed, in degrees 360 format
+	 */
+	getBearing: function (lat1, lon1, lat2, lon2) {
+		var math = fmc.math;
+		lat1 = math.toRadians(lat1);
+		lat2 = math.toRadians(lat2);
+		lon1 = math.toRadians(lon1);
+		lon2 = math.toRadians(lon2);
+		var y = Math.sin(lon2 - lon1) * Math.cos(lat2);
+		var x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1);
+		var brng = math.toDegrees(Math.atan2(y, x));
+		return brng;
+	},
+	
+	/**
+	 * Computes the climb rate with an altitude restriction
+	 * 
+	 * @param {Number} deltaAlt The altitude difference
+	 * @param {Number} nextDist The distance to the restriction point
+	 * @return {Number} The climb rate necessary to attain the restriction
+	 */
+	getClimbrate: function (deltaAlt, nextDist) {
+		var gs = fmc.math.getGroundSpeed();
+		var vs = 100 * Math.round((gs * (deltaAlt / (nextDist * nmToFeet)) * nmToFeet / 60) / 100);
+		return vs;
+	},
+	
+	/**
+	 * Earth's radius in nautical miles, used to calculate Great Circle Distance
+	 */
+	earthRadiusNM: 3440.06
+};
+
+fmc.waypoints = {
+	input: "",
+	route: [],
+	nextWaypoint: "",
+	
+	/**
+	 * Turns the waypoints into an array
+	 *
+	 * @return {Array} The array of waypoint names
+	 */
+	makeFixesArray: function () {
+		var result = [];
+		var departureVal = $('#departureInput').val();
+		if (departureVal) result.push(departureVal);
+		$('.waypoint td:first-child div > input').each(function() {
+			result.push($(this).val());
+		});
+		var arrivalVal = $('#arrivalInput').val();
+		if (arrivalVal) result.push(arrivalVal);
+		
+		return result;
+	},
+	
+	/**
+	 * Joins the fixes array into a string
+	 *
+	 * @return {String} All waypoints, each seperated by a space
+	 */
+	toFixesString: function () {
+		return fmc.waypoints.makeFixesArray().join(" ");
+	}, 
+	
+	/**
+	 * Makes a sharable route
+	 * 
+	 * @return {String} A sharable route with airports and waypoints, 
+	 * 					using <code>JSON.stringify</code> method
+	 */
+	toRouteString: function () {
+		return JSON.stringify ([
+			$('#departureInput').val(), 
+			$('#arrivalInput').val(), 
+			$('#flightNumInput').val(), 
+			fmc.waypoints.route
+		]);
+	},
+	
+	/**
+	 * Accesses autopilot_pp library and find the coordinates for the waypoints
+	 * 
+	 * @param {String} wpt The waypoint to check for eligibility
+	 * @return {Array} Array of coordinates if eligible, 
+	 *         {Boolean} false otherwise
+	 */
+	getCoords: function (wpt) {
+		if (autopilot_pp.require('icaoairports')[wpt]) {
+			return autopilot_pp.require('icaoairports')[wpt];
+		} else if (autopilot_pp.require('waypoints')[wpt]) {
+			return autopilot_pp.require('waypoints')[wpt];
+		} else return false;
+	},
+	
+	/**
+	 * Turns the coordinate entered from minutes-seconds format to decimal format
+	 * 
+	 * @param {String} a Coordinate in minutes-seconds format
+	 * @return {Number} Coordinate in decimal format
+	 */
+	formatCoords: function (a) {
+		if (a.indexOf(' ') > -1) {
+			var array = a.split(' ');
+			var d = Number(array[0]);
+			var m = Number(array[1]) / 60;
+			var coords;
+			if (d < 0) coords = d - m;
+			else coords = d + m;
+			return coords;
+		} else return Number(a);
+	},
+	
+	/**
+	 * Turns a normal waypoints input or shared waypoints string into waypoints
+	 * 
+	 * @param {String} an input of waypoints or a shared/generated route
+	 */
+	toRoute: function (s) {
+		if (s.indexOf('["') !== 0) {
+			var index = s.indexOf('fpl=');
+			var isWaypoints = true;
+			var departure = $('#wptDeparture')[0].checked;
+			var arrival = $('#wptArrival')[0].checked;
+			var n = $('#waypoints tbody tr').length - 1;
+			var a;
+			var str = [];
+
+			str = s.trim().toUpperCase().split(" ");
+			for (var i = 0; i < str.length; i++)
+					if (str[i].length > 5 || str[i].length < 1 || !(/^\w+$/.test(str[i])))
+						isWaypoints = false;
 			
-			return result;
-		},
-		/**
-		 * Joins the fixes array into a string
-		 *
-		 * @return {String} All waypoints, each seperated by a space
-		 */
-		toFixesString: function () {
-			return fmc.waypoints.makeFixesArray().join(" ");
-		}, 
-		/**
-		 * Makes a sharable route
-		 * 
-		 * @return {String} A sharable route with airports and waypoints, 
-		 * 					using <code>JSON.stringify</code> method
-		 */
-		toRouteString: function () {
-			return JSON.stringify ([
-				$('#departureInput').val(), 
-				$('#arrivalInput').val(), 
-				$('#flightNumInput').val(), 
-				fmc.waypoints.route
-			]);
+			if (isWaypoints) {
+				for (var i = 0; i < n; i++) {
+					fmc.waypoints.removeWaypoint(1);
+				}
+				fmc.waypoints.route = [];
+
+				if (departure) {
+					var wpt = str[0];
+					$('#departureInput').val(wpt).change();
+					a = 1;
+				} else {
+					a = 0;
+					$('#departureInput').val("").change();
+				}
+				for (var i = 0; i + a < str.length; i++) {
+					fmc.waypoints.addWaypoint();
+					var wpt = str[i + a];
+					$('#waypoints input.wpt:eq(' + i + ')').val(wpt).change();
+				}
+				if (arrival) {
+					var wpt = str[str.length - 1];
+					$('#arrivalInput').val(wpt).change();
+				}
+			} else {
+				alert("Invalid Waypoints Input");
+			}
+		} else {
+			fmc.waypoints.loadFromSave(url);
+		}
+	},
+	
+	/**
+	 * Adds 1 waypoint input field to end of waypoints list
+	 */
+	addWaypoint: function () {
+		var waypoints = fmc.waypoints;
+		waypoints.route.length++;
+		var n = waypoints.route.length;
+		waypoints.route[waypoints.route.length - 1] = [];
+		$('<tr>')
+			.addClass('waypoint')
+			.append(
+
+				// Waypoint
+				$('<td>')
+				.append(
+					$('<div>')
+					.addClass('input-prepend input-append')
+					.append(
+						$('<input>')
+						.addClass('input-medium')
+						.addClass('wpt')
+						.css('width', '75px')
+						.attr('type', 'text')
+						.attr('placeholder', 'Fix/Apt.')
+						.change(function() {
+							var n = $(this).val();
+							var coords = waypoints.getCoords(n);
+							var index = $(this).parents().eq(2).index() - 1;
+							if (!coords) {
+								waypoints.route[index][0] = n;
+								waypoints.route[index][4] = false;
+							} else {
+								$(this).parents().eq(2).children('.position').children('div').children('.lat').val(coords[0]);
+								$(this).parents().eq(2).children('.position').children('div').children('.lon').val(coords[1]);
+								waypoints.route[index] = [n, coords[0], coords[1], undefined, true];
+							}
+						})
+					)
+				)
+
+				// Position
+				, $('<td>')
+				.addClass('position')
+				.append(
+					$('<div>')
+					.addClass('input-prepend input-append')
+					.append(
+						$('<input>')
+						.addClass('input-medium lat')
+						.css('width', '80px')
+						.attr({
+							'type': 'text',
+							'tabindex': '-1'
+						})
+						.change(function() {
+							var index = $(this).parents().eq(2).index() - 1;
+							waypoints.route[index][1] = waypoints.formatCoords($(this).val());
+							waypoints.route[index][4] = false;
+						}), $('<input>')
+						.addClass('input-medium lon')
+						.css('width', '80px')
+						.attr({
+							'type': 'text',
+							'tabindex': '-1'
+						})
+						.change(function() {
+							var index = $(this).parents().eq(2).index() - 1;
+							waypoints.route[index][2] = waypoints.formatCoords($(this).val());
+							waypoints.route[index][4] = false;
+						})
+					)
+				)
+
+				// Altitude
+				, $('<td>')
+				.addClass('altitude')
+				.append(
+					$('<div>')
+					.addClass('input-prepend input-append')
+					.append(
+						$('<input>')
+						.addClass('input-medium alt')
+						.css('width', '40px')
+						.attr({
+							'type': 'text',
+							'tabindex': '-1',
+							'placeholder': 'Ft.'
+						})
+						.change(function() {
+							var index = $(this).parents().eq(2).index() - 1;
+							waypoints.route[index][3] = Number($(this).val());
+						})
+					)
+				)
+
+				// Actions
+				, $('<td>')
+				.append(
+					$('<div>')
+					.addClass('input-prepend input-append')
+					.append(
+
+						// Activate
+						$('<button>')
+						.attr('type', 'button')
+						.addClass('btn btn-standard activate')
+						.text('Activate')
+						.click(function() {
+							var n = $(this).parents().eq(2).index();
+							activateLeg(n);
+						})
+
+						// Shift up
+						, $('<button>')
+						.attr('type', 'button')
+						.addClass('btn btn-info')
+						.append($('<i>').addClass('icon-arrow-up'))
+						.click(function() {
+							var row = $(this).parents().eq(2);
+							fmc.waypoints.shiftWaypoint(row, row.index(), "up");
+						})
+
+						// Shift down
+						, $('<button>')
+						.attr('type', 'button')
+						.addClass('btn btn-info')
+						.append($('<i>').addClass('icon-arrow-down'))
+						.click(function() {
+							var row = $(this).parents().eq(2);
+							fmc.waypoints.shiftWaypoint(row, row.index(), "down");
+						})
+
+						// Remove
+						, $('<button>')
+						.attr('type', 'button')
+						.addClass('btn btn-danger')
+						.append($('<i>').addClass('icon-remove'))
+						.click(function() {
+							var n = $(this).parents().eq(2).index();
+							waypoints.removeWaypoint(n);
+						})
+					)
+				)
+			).appendTo('#waypoints');
+	},
+	
+	/**
+	 * Removes a waypoint
+	 * 
+	 * @param {Number} n The index of which will be removed
+	 */
+	removeWaypoint: function (n) {
+		$('#waypoints tr:nth-child(' + (n + 1) + ')').remove();
+		fmc.waypoints.route.splice((n - 1), 1);
+		if (fmc.waypoints.nextWaypoint == n) {
+			fmc.waypoints.nextWaypoint = null;
+		}
+	},
+	
+	/**
+	 * Saves the waypoints data into localStorage
+	 */
+	saveData: function () {
+		if (fmc.waypoints.route.length < 1 || !fmc.waypoints.route[0][0]) {
+			alert ("There is no route to save");
+		} else {
+			localStorage.removeItem('fmcWaypoints');
+			var arr = fmc.waypoints.toRouteString();
+			localStorage.setItem("fmcWaypoints", arr);
+		}
+	},
+	
+	/**
+	 * Retrieves the saved data and adds to the waypoint list
+	 *
+	 * @param {String} arg The generated route
+	 */
+	loadFromSave: function (arg) {
+	
+	/**
+	 * The argument passed in [optional] or the localStorage is a 
+	 * 3D array in String format. arr is the array after JSON.parse 
+	 *	
+	 * @param {String} arr[0] Departure input
+	 * @param {String} arr[1] Arrival Input
+	 * @param {String} arr[2] Flight Number
+	 * @param {Array} arr[3] 2D array, the route
+	 */
+		
+		arg = arg || localStorage.getItem('fmcWaypoints');
+		var waypoints = fmc.waypoints;
+		var arr = JSON.parse(arg);
+		localStorage.removeItem('fmcWaypoints');
+		
+		if (arr) {
+			waypoints.route = [];
+			var route = arr[3];
+			var n = $('#waypoints tbody tr').length - 1;
+			for (var i = 0; i < n; i++) {
+				waypoints.removeWaypoint(1);
+			}
+			// JSON.stringify turns undefined into null; this loop turns it back
+			route.forEach(function (wpt) {
+				if (!wpt[3] || wpt[3] == null || wpt[3] == 0) wpt[3] = undefined;
+			});
+			
+			if (arr[0]) $('#departureInput').val(arr[0]).change();
+			if (arr[1]) $('#arrivalInput').val(arr[1]).change();
+			if (arr[2]) $('#flightNumInput').val(arr[2]).change();
+			
+			for (var i = 0; i < route.length; i++) {
+				waypoints.addWaypoint();
+				$('#waypoints input.wpt:eq(' + i + ')').val(route[i][0]).change(); // Input the fix
+				
+				// If the waypoint is not eligible or a duplicate
+				if (!route[i][4] || !$('#waypoints input.lat:eq(' + i + ')').val()) {
+					$('#waypoints input.lat:eq(' + i + ')').val(route[i][1]).change(); // Input the lat.
+					$('#waypoints input.lon:eq(' + i + ')').val(route[i][2]).change(); // Input the lon.
+				}
+				
+				if (route[i][3]) // If there is an altitude restriction
+					$('#waypoints input.alt:eq(' + i + ')').val(route[i][3]).change();
+			}
+			// Auto-saves the data once again
+			waypoints.saveData();
+			
+		} else alert ("You did not save the waypoints or you cleared the browser's cache");
+	},
+	
+	/**
+	 * Shifts a waypoint up or down one step
+	 *
+	 * @param {jQuery element} r The element to be moved in the UI
+	 * @param {Number} n Index of this waypoint
+	 * @param <restricted>{String} d Direction of shifting, "up" or "down"
+	 */
+	shiftWaypoint: function(r, n, d) {
+		var waypoints = fmc.waypoints;
+		console.log("Waypoint #" + n + " moved " + d);
+		if (!(d == "up" && n == 1 || d == "down" && n == waypoints.route.length)) {
+			if (d == "up") {
+				waypoints.route.move(n - 1, n - 2);
+				r.insertBefore(r.prev());
+				if (waypoints.nextWaypoint == n) {
+					waypoints.nextWaypoint = n - 1;
+				} else if (waypoints.nextWaypoint == n - 1) {
+					waypoints.nextWaypoint = n + 1;
+				}
+			} else {
+				waypoints.route.move(n - 1, n);
+				r.insertAfter(r.next());
+				if (waypoints.nextWaypoint == n) {
+					waypoints.nextWaypoint = n + 1;
+				} else if (waypoints.nextWaypoint == n + 1) {
+					waypoints.nextWaypoint = n - 1;
+				}
+			}
 		}
 	}
 };
 
-// FMC html elements
+fmc.vnav = {
+	profile: gefs.aircraft.setup.fmc
+}
+
 fmc.ui = {
-// External distance indicator
-externalDist: $('<div>')
-	.addClass('setup-section')
-	.css('padding-bottom','0px')
-	.append( $('<div>')
-		.addClass('input-prepend input-append')
-		.css('margin-bottom','4px')
-		.append(
-		$('<span>')
-			.addClass('add-on')
-			.text('Dest'),
-		$('<span>')
-			.addClass('add-on')
-			.css('background-color', 'white')
-			.css('width', '53px')
+	// External distance indicator
+	externalDist: $('<div>')
+		.addClass('setup-section')
+		.css('padding-bottom','0px')
+		.append( $('<div>')
+			.addClass('input-prepend input-append')
+			.css('margin-bottom','4px')
 			.append(
-			$('<div>')
-				.attr('id', 'externaldist')
+			$('<span>')
+				.addClass('add-on')
+				.text('Dest'),
+			$('<span>')
+				.addClass('add-on')
+				.css('background-color', 'white')
+				.css('width', '53px')
+				.append(
+				$('<div>')
+					.attr('id', 'externaldist')
+				)
 			)
-		)
-	).appendTo('td.gefs-f-standard'), 
-	
-// FMC button
-button: $('<button>')
-	.addClass('btn btn-success gefs-stopPropagation')
-	.attr('type', 'button')
-	.attr('data-toggle', 'modal')
-	.attr('data-target', '#fmcModal')
-	.css('margin-left','1px')
-	.text('FMC ')
-	.append( $('<i>').addClass('icon-list-alt'))
-	.appendTo('div.setup-section:nth-child(2)')
+		).appendTo('td.gefs-f-standard'), 
+		
+	// FMC button
+	button: $('<button>')
+		.addClass('btn btn-success gefs-stopPropagation')
+		.attr('type', 'button')
+		.attr('data-toggle', 'modal')
+		.attr('data-target', '#fmcModal')
+		.css('margin-left','1px')
+		.text('FMC ')
+		.append( $('<i>').addClass('icon-list-alt'))
+		.appendTo('div.setup-section:nth-child(2)')
 };
+//----------------------------------------------------------------------------------------
+
 
 // Inits FMC
 (function (initFMC) {
 	var timer = setInterval(function () {
-		if (window.ges && ges.aircraft && ges.aircraft.animationValue && ges.aircraft.animationValue.altitude) {
+		if (gefs.aircraft && gefs.aircraft.animationValue && gefs.aircraft.animationValue.altitude) {
 			clearInterval(timer);
 			initFMC();
 		}
@@ -141,14 +562,16 @@ button: $('<button>')
 	// Global variables/constants
 	window.feetToNM = 1 / 6076;
 	window.nmToFeet = 6076;
-
+	
+	
+	//-------------- TIMED FUNCTIONS - functions that update the FMC data --------------------
 	/**
 	 * Updates the plane's progress during flying, set on a timer
 	 */
 	var progTimer = setInterval(updateProgress, 5000);
 	function updateProgress() {
-		var lat1 = ges.aircraft.llaLocation[0] || 0;
-		var lon1 = ges.aircraft.llaLocation[1] || 0;
+		var lat1 = gefs.aircraft.llaLocation[0] || 0;
+		var lon1 = gefs.aircraft.llaLocation[1] || 0;
 		var lat2 = arrival[1] || 0;
 		var lon2 = arrival[2] || 0;
 		var times = ["--", "--", "--", "--", "--"]; // flightete, flighteta, todete, todeta, nextete
@@ -162,9 +585,9 @@ button: $('<button>')
 		}
 		if (test) flightdist = getRouteDistance(fmc.waypoints.route.length + 1);
 		else flightdist = fmc.math.getDistance(lat1, lon1, lat2, lon2);
-		var aircraft = ges.aircraft.name;
+		var aircraft = gefs.aircraft.name;
 
-		if (!ges.aircraft.groundContact && arrival) {
+		if (!gefs.aircraft.groundContact && arrival) {
 			times[0] = getete(flightdist, true);
 			times[1] = geteta(times[0][0], times[0][1]);
 			times[4] = getete(nextdist, false);
@@ -187,7 +610,7 @@ button: $('<button>')
 			activateLeg(fmc.waypoints.nextWaypoint + 1);
 		}
 		clearInterval(LNAVTimer);
-		if (d < ges.aircraft.animationValue.kias / 60) LNAVTimer = setInterval(updateLNAV, 500);
+		if (d < gefs.aircraft.animationValue.kias / 60) LNAVTimer = setInterval(updateLNAV, 500);
 		else LNAVTimer = setInterval(updateLNAV, 30000);
 	}
 
@@ -203,7 +626,7 @@ button: $('<button>')
 		var next = getNextWaypointWithAltRestriction();
 		var hasRestriction = next !== -1;
 
-		var currentAlt = ges.aircraft.animationValue.altitude;
+		var currentAlt = gefs.aircraft.animationValue.altitude;
 		var targetAlt, deltaAlt, nextDist, targetDist;
 		if (hasRestriction) {
 			targetAlt = route[next - 1][3];
@@ -295,13 +718,13 @@ button: $('<button>')
 	 */
 	var logTimer = setInterval(updateLog, 120000);
 	function updateLog(other) {
-		if (!ges.pause && !flight.recorder.playing && !flight.recorder.paused) {
-			var spd = Math.round(ges.aircraft.animationValue.ktas);
-			var hdg = Math.round(ges.aircraft.animationValue.heading360);
-			var alt = Math.round(ges.aircraft.animationValue.altitude);
-			var fps = ges.debug.fps;
-			var lat = (Math.round(10000 * ges.aircraft.llaLocation[0])) / 10000;
-			var lon = (Math.round(10000 * ges.aircraft.llaLocation[1])) / 10000;
+		if (!gefs.pause && !flight.recorder.playing && !flight.recorder.paused) {
+			var spd = Math.round(gefs.aircraft.animationValue.ktas);
+			var hdg = Math.round(gefs.aircraft.animationValue.heading360);
+			var alt = Math.round(gefs.aircraft.animationValue.altitude);
+			var fps = gefs.debug.fps;
+			var lat = (Math.round(10000 * gefs.aircraft.llaLocation[0])) / 10000;
+			var lon = (Math.round(10000 * gefs.aircraft.llaLocation[1])) / 10000;
 			var date = new Date();
 			var h = date.getUTCHours();
 			var m = date.getUTCMinutes();
@@ -330,7 +753,7 @@ button: $('<button>')
 				.appendTo('#logData');
 		}
 		clearInterval(logTimer);
-		if (ges.aircraft.animationValue.altitude > 18000) {
+		if (gefs.aircraft.animationValue.altitude > 18000) {
 			logTimer = setInterval(updateLog, 120000);
 		} else logTimer = setInterval(updateLog, 30000);
 	}
@@ -340,12 +763,12 @@ button: $('<button>')
 	 */
 	var gearTimer = setInterval(checkGear, 12000);
 	function checkGear() {
-		if (ges.aircraft.animationValue.gearPosition !== ges.aircraft.animationValue.gearTarget) {
-			if (ges.aircraft.animationValue.gearTarget === 1) updateLog('Gear Up');
+		if (gefs.aircraft.animationValue.gearPosition !== gefs.aircraft.animationValue.gearTarget) {
+			if (gefs.aircraft.animationValue.gearTarget === 1) updateLog('Gear Up');
 			else updateLog('Gear Down');
 		}
 		clearInterval(gearTimer);
-		if (ges.aircraft.animationValue.altitude < 10000) gearTimer = setInterval(checkGear, 12000);
+		if (gefs.aircraft.animationValue.altitude < 10000) gearTimer = setInterval(checkGear, 12000);
 		else gearTimer = setInterval(checkGear, 60000);
 	}
 
@@ -354,8 +777,8 @@ button: $('<button>')
 	 */
 	var flapsTimer = setInterval(checkFlaps, 5000);
 	function checkFlaps() {
-		if (ges.aircraft.animationValue.flapsPosition !== ges.aircraft.animationValue.flapsTarget) {
-			updateLog('Flaps set to ' + ges.aircraft.animationValue.flapsTarget);
+		if (gefs.aircraft.animationValue.flapsPosition !== gefs.aircraft.animationValue.flapsTarget) {
+			updateLog('Flaps set to ' + gefs.aircraft.animationValue.flapsTarget);
 		}
 	}
 
@@ -364,8 +787,8 @@ button: $('<button>')
 	 */
 	var speedTimer = setInterval(checkSpeed, 15000);
 	function checkSpeed() {
-		var kcas = ges.aircraft.animationValue.kcas;
-		var altitude = ges.aircraft.animationValue.altitude;
+		var kcas = gefs.aircraft.animationValue.kcas;
+		var altitude = gefs.aircraft.animationValue.altitude;
 		if (kcas > 255 && altitude < 10000) {
 			updateLog('Overspeed');
 		}
@@ -373,7 +796,11 @@ button: $('<button>')
 		if (altitude < 10000) speedTimer = setInterval(checkSpeed, 15000);
 		else speedTimer = setInterval(checkSpeed, 30000);
 	}
-
+	// ---------------------------------------------------------------------------------------
+	
+	
+	
+	//-------------- FUNCTIONS TO BE SORTED INTO GLOBAL FMC OBJECT ---------------------------
 	/**
 	 * Updates plane's phase of flying: climb, cruise, or descent
 	 *
@@ -382,7 +809,7 @@ button: $('<button>')
 	 * @TODO add a better logic, especially near the cruise phase
 	 */
 	function updatePhase() {
-		var currentAlt = 100 * Math.round(ges.aircraft.animationValue.altitude / 100);
+		var currentAlt = 100 * Math.round(gefs.aircraft.animationValue.altitude / 100);
 		if (phase === "climb" && currentAlt === Number(cruise)) {
 			$('#phaseBtn').click();
 		} else if (phase === "cruise") {
@@ -428,397 +855,51 @@ button: $('<button>')
 	 */
 	function getFlightParameters() {
 		var spd, vs;
-		var aircraft = ges.aircraft.name;
-		var gndElev = ges.groundElevation * metersToFeet;
-		var a = ges.aircraft.animationValue.altitude;
+		var aircraft = gefs.aircraft.name;
+		var gndElev = gefs.groundElevation * metersToFeet;
+		var a = gefs.aircraft.animationValue.altitude;
 		var isMach = $('#Qantas94Heavy-ap-spd span:last-child').text().trim() === 'M.';
-		var switchMode = function () {
+		var switchMode = function() {
 			$('#Qantas94Heavy-ap-spd span:last-child').click();
 		};
 
 		// CLIMB
 		if (phase == "climb") {
-			if (a > 1500 + gndElev && a <= 4000 + gndElev) {
+			if (a < 30000) {
 				if (isMach) switchMode();
-				switch (aircraft) {
-				case "a380":
-				case "md11":
-				case "concorde":
-				case "156":
-				case "161":
-				case "162":
-				case "164":
-				case "166":
-				case "167":
-				case "172":
-				case "183":
-				case "187":
-				case "188":
-				case "189":
-				case "200":
-				case "207":
-				case "208":
-				case "211":
-				case "212":
-				case "213":
-				case "222":
-				case "223":
-					spd = 210;
-					vs = 3000;
-					break;
-				default:
-					break;
-				}
-			} else if (a > 4000 + gndElev && a <= 10000 + gndElev) {
-				if (isMach) switchMode();
-				switch (aircraft) {
-				case "a380":
-				case "md11":
-				case "concorde":
-				case "156":
-				case "161":
-				case "162":
-				case "164":
-				case "166":
-				case "167":
-				case "172":
-				case "183":
-				case "187":
-				case "188":
-				case "189":
-				case "200":
-				case "207":
-				case "208":
-				case "211":
-				case "212":
-				case "213":
-				case "222":
-				case "223":
-					spd = 245;
-					vs = 2500;
-					break;
-				default:
-					break;
-				}
-			} else if (a > 10000 + gndElev && a <= 18000) {
-				if (isMach) switchMode();
-				switch (aircraft) {
-				case "a380":
-				case "md11":
-				case "concorde":
-				case "156":
-				case "161":
-				case "167":
-				case "172":
-				case "183":
-				case "187":
-				case "188":
-				case "207":
-				case "211":
-				case "212":
-				case "213":
-				case "222":
-				case "223":
-					spd = 295;
-					vs = 2200;
-					break;
-				case "162":
-				case "164":
-				case "166":
-				case "189":
-				case "200":
-				case "208":
-					spd = 290;
-					vs = 2200;
-					break;
-				default:
-					break;
-				}
-			} else if (a > 18000 && a <= 24000) {
-				if (isMach) switchMode();
-				switch (aircraft) {
-				case "concorde":
-				case "a380":
-				case "156":
-				case "161":
-				case "167":
-				case "172":
-				case "183":
-				case "207":
-				case "211":
-				case "212":
-				case "213":
-				case "223":
-					spd = 310;
-					vs = 1800;
-					break;
-				case "md11":
-				case "187":
-				case "188":
-				case "222":
-					spd = 300;
-					vs = 1800;
-					break;
-				case "162":
-				case "164":
-				case "166":
-				case "189":
-				case "200":
-				case "208":
-					spd = 295;
-					vs = 1800;
-					break;
-				default:
-					break;
-				}
-			} else if (a > 24000 && a <= 26000) {
-				if (isMach) switchMode();
-				switch (aircraft) {
-				case "a380":
-				case "156":
-				case "161":
-				case "167":
-				case "172":
-				case "207":
-				case "211":
-				case "212":
-				case "213":
-				case "223":
-					vs = 1500;
-					break;
-				default:
-					break;
-				}
-			} else if (a > 26000 && a <= 28000) {
-				if (isMach) switchMode();
-				switch (aircraft) {
-				case "md11":
-				case "162":
-				case "164":
-				case "166":
-				case "183":
-				case "187":
-				case "188":
-				case "189":
-				case "200":
-				case "208":
-				case "222":
-					vs = 1500;
-					break;
-				default:
-					break;
-				}
-			} else if (a > 29500) {
+			} else if (a >= 30000) {
 				if (!isMach) switchMode();
-				switch (aircraft) {
-				case "162":
-				case "164":
-				case "166":
-				case "189":
-				case "200":
-				case "208":
-					spd = 0.76;
-					break;
-				case "a380":
-				case "156":
-				case "161":
-				case "167":
-				case "172":
-				case "207":
-				case "211":
-				case "212":
-				case "213":
-				case "223":
-					spd = 0.82;
-					break;
-				case "md11":
-				case "187":
-				case "188":
-				case "222":
-					spd = 0.78;
-					vs = 1200;
-					break;
-				case "183":
-					spd = 0.80;
-					break;
-				default:
-					break;
+			}
+			
+			var profile = fmc.vnav.profile.climb;
+			var index;
+			for (var i=0; i<profile.length; i++) {
+				if (a > profile[i][0] && a <= profile[i][1]) {
+					index = i;
 				}
 			}
-			if (a > cruise - 100 && cruise > 18000) {
-				if (!isMach) switchMode();
-				switch (aircraft) {
-				case "162":
-				case "164":
-					spd = 0.785;
-					break;
-				case "166":
-				case "189":
-				case "200":
-				case "208":
-					spd = 0.78;
-					break;
-				case "161":
-				case "172":
-					spd = 0.84;
-					break;
-				case "a380":
-				case "156":
-				case "167":
-				case "207":
-				case "211":
-				case "212":
-				case "213":
-					spd = 0.85;
-					break;
-				case "223":
-					spd = 0.855;
-					break;
-				case "md11":
-				case "187":
-				case "188":
-				case "222":
-					spd = 0.80;
-					break;
-				case "183":
-					spd = 0.82;
-					break;
-				case "concorde":
-					spd = 2;
-					break;
-				default:
-					break;
-				}
-			}
+			spd = profile[index][2];
+			vs = profile[index][3];
 		}
 
 		// DESCENT
 		else if (phase == "descent") {
-			if (a > cruise - 700 && cruise >= 31000) {
+			if (a > 30000) {
 				if (!isMach) switchMode();
-				vs = -1000;
 			} else {
-				if (a > 45000) {
-					if (!isMach) switchMode();
-					switch (aircraft) {
-					case "concorde":
-						spd = 1.5;
-						vs = -2000;
-						break;
-					default:
-						break;
-					}
-				} else if (a > 30000 && a <= 45000) {
-					if (!isMach) switchMode();
-					switch (aircraft) {
-					case "concorde":
-						vs = -3600;
-						break;
-					case "a380":
-					case "156":
-					case "161":
-					case "167":
-					case "172":
-					case "207":
-					case "211":
-					case "212":
-					case "213":
-					case "223":
-						spd = 0.83;
-						vs = -2400;
-						break;
-					case "183":
-						spd = 0.81;
-						vs = -2300;
-						break;
-					case "md11":
-					case "162":
-					case "164":
-					case "166":
-					case "187":
-					case "188":
-					case "189":
-					case "200":
-					case "208":
-					case "222":
-						spd = 0.77;
-						vs = -2300;
-						break;
-					default:
-						break;
-					}
-				} else if (a > 18000 && a < 30000) {
-					if (isMach) switchMode();
-					switch (aircraft) {
-					case "162":
-					case "164":
-					case "166":
-					case "189":
-					case "200":
-					case "208":
-						spd = 295;
-						vs = -2100;
-						break;
-					case "a380":
-					case "md11":
-					case "156":
-					case "161":
-					case "167":
-					case "172":
-					case "183":
-					case "187":
-					case "188":
-					case "207":
-					case "211":
-					case "212":
-					case "213":
-					case "222":
-					case "223":
-						spd = 310;
-						vs = -2200;
-						break;
-					case "concorde":
-						spd = 330;
-						vs = -2400;
-						break;
-					default:
-						break;
-					}
-				} else if (a > 12000 + fieldElev && a <= 18000) {
-					if (isMach) switchMode();
-					switch (aircraft) {
-					case "a380":
-					case "md11":
-					case "concorde":
-					case "156":
-					case "161":
-					case "162":
-					case "164":
-					case "166":
-					case "167":
-					case "172":
-					case "183":
-					case "187":
-					case "188":
-					case "189":
-					case "200":
-					case "207":
-					case "208":
-					case "211":
-					case "212":
-					case "213":
-					case "222":
-					case "223":
-						spd = 280;
-						vs = -1800;
-						break;
-					default:
-						break;
-					}
+				if (isMach) switchMode();
+			}
+			
+			var profile = fmc.vnav.profile.descent;
+			var index;
+			for (var i=0; i<profile.length; i++) {
+				if (a > profile[i][0] && a <= profile[i][1]) {
+					index = i;
 				}
 			}
+			spd = profile[index][2];
+			vs = profile[index][3];
 		}
-
 		return [spd, vs];
 	}
 
@@ -911,10 +992,10 @@ button: $('<button>')
 	 * @return {Array} The time after <code>timeCheck(h, m)</code>
 	 */
 	function getete(d, a) {
-		var hours = d / ges.aircraft.animationValue.ktas;
+		var hours = d / gefs.aircraft.animationValue.ktas;
 		var h = parseInt(hours);
 		var m = Math.round(60 * (hours - h));
-		if (a) m += Math.round(ges.aircraft.animationValue.altitude / 4000);
+		if (a) m += Math.round(gefs.aircraft.animationValue.altitude / 4000);
 		return timeCheck(h, m);
 	}
 
@@ -941,7 +1022,7 @@ button: $('<button>')
 	 * @return {Number} The route distance
 	 */
 	function getRouteDistance(end) {
-		var loc = ges.aircraft.llaLocation || [0, 0, 0];
+		var loc = gefs.aircraft.llaLocation || [0, 0, 0];
 		var start = fmc.waypoints.nextWaypoint || 0;
 		var route = fmc.waypoints.route;
 		var total;
@@ -982,456 +1063,12 @@ button: $('<button>')
 	 * @return {Number} The turning distance
 	 */
 	function getTurnDistance(angle) {
-		var v = ges.aircraft.animationValue.kcas;
+		var v = gefs.aircraft.animationValue.kcas;
 		var r = 0.107917 * Math.pow(Math.E, 0.0128693 * v);
 		var a = fmc.math.toRadians(angle);
 		return r * Math.tan(a / 2) + 0.20;
 	}
 
-	/**
-	 * Computes the ground speed of the aircraft
-	 * 
-	 * @return {Number} The ground speed of the aircraft
-	 */
-	fmc.math.getGroundSpeed = function () {
-		var tas = ges.aircraft.animationValue.ktas;
-		var vs = (60 * ges.aircraft.animationValue.climbrate) * feetToNM;
-		console.log("tas: " + tas + ", vs: " + vs);
-		return Math.sqrt(tas * tas - vs * vs);
-	};
-
-	/**
-	 * Computes the climb rate with an altitude restriction
-	 * 
-	 * @param {Number} deltaAlt The altitude difference
-	 * @param {Number} nextDist The distance to the restriction point
-	 * @return {Number} The climb rate necessary to attain the restriction
-	 */
-	fmc.math.getClimbrate = function (deltaAlt, nextDist) {
-		var gs = fmc.math.getGroundSpeed();
-		var vs = 100 * Math.round((gs * (deltaAlt / (nextDist * nmToFeet)) * nmToFeet / 60) / 100);
-		return vs;
-	};
-
-	/**
-	 * Computes the distance between two sets of coordinates
-	 * 
-	 * @param {Number} lat1 Latitude of first coordinate
-	 * @param {Number} lon1 Longetude of first coordinate
-	 * @param {Number} lat2 Latitude of second coordinate
-	 * @param {Number} lon2 Longetude of second coordinate
-	 * @return {Number} The distance computed, in nautical miles
-	 */
-	fmc.math.getDistance = function (lat1, lon1, lat2, lon2) {
-		var math = fmc.math;
-		var dlat = math.toRadians(lat2 - lat1);
-		var dlon = math.toRadians(lon2 - lon1);
-		lat1 = math.toRadians(lat1);
-		lat2 = math.toRadians(lat2);
-		var a = Math.sin(dlat / 2) * Math.sin(dlat / 2) + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dlon / 2) * Math.sin(dlon / 2);
-		var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-		return math.earthRadiusNM * c;
-	};
-
-	/**
-	 * Computes the bearing between two sets of coordinates
-	 * 
-	 * @param {Number} lat1 Latitude of first coordinate
-	 * @param {Number} lon1 Longetude of first coordinate
-	 * @param {Number} lat2 Latitude of second coordinate
-	 * @param {Number} lon2 Longetude of second coordinate
-	 * @return {Number} The bearing computed, in degrees 360 format
-	 */
-	fmc.math.getBearing = function (lat1, lon1, lat2, lon2) {
-		var math = fmc.math;
-		lat1 = math.toRadians(lat1);
-		lat2 = math.toRadians(lat2);
-		lon1 = math.toRadians(lon1);
-		lon2 = math.toRadians(lon2);
-		var y = Math.sin(lon2 - lon1) * Math.cos(lat2);
-		var x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1);
-		var brng = math.toDegrees(Math.atan2(y, x));
-		return brng;
-	};
-
-	/**
-	 * Accesses autopilot_pp library and find the coordinates for the waypoints
-	 * 
-	 * @param {String} wpt The waypoint to check for eligibility
-	 * @return {Array} Array of coordinates if eligible, 
-	 *		 {Boolean} false otherwise
-	 */
-	fmc.waypoints.getCoords = function (wpt) {
-		if (autopilot_pp.require('icaoairports')[wpt]) {
-			return autopilot_pp.require('icaoairports')[wpt];
-		} else if (autopilot_pp.require('waypoints')[wpt]) {
-			return autopilot_pp.require('waypoints')[wpt];
-		} else return false;
-	};
-
-	/**
-	 * Turns the coordinate entered from minutes-seconds format to decimal format
-	 * 
-	 * @param {String} a Coordinate in minutes-seconds format
-	 * @return {Number} Coordinate in decimal format
-	 */
-	fmc.waypoints.formatCoords = function (a) {
-		if (a.indexOf(' ') > -1) {
-			var array = a.split(' ');
-			var d = Number(array[0]);
-			var m = Number(array[1]) / 60;
-			var coords;
-			if (d < 0) coords = d - m;
-			else coords = d + m;
-			return coords;
-		} else return Number(a);
-	};
-
-	/**
-	 * Turns a SkyVector link, normal waypoints input, or shared waypoints string into waypoints
-	 * 
-	 * @param {String} url A SkyVector Link, an input of waypoints, or a shared/generated route
-	 */
-	fmc.waypoints.toRoute = function (s) {
-		if (s.indexOf('["') !== 0) {
-			var isWaypoints = true;
-			var departure = $('#wptDeparture')[0].checked;
-			var arrival = $('#wptArrival')[0].checked;
-			var n = $('#waypoints tbody tr').length - 1;
-			var a;
-			var str = [];
-
-			str = s.trim().toUpperCase().split(" ");
-			for (var i = 0; i < str.length; i++)
-				if (str[i].length > 5 || str[i].length < 1 || !(/^\w+$/.test(str[i])))
-					isWaypoints = false;
-
-			if (isWaypoints) {
-				for (var i = 0; i < n; i++) {
-					fmc.waypoints.removeWaypoint(1);
-				}
-				fmc.waypoints.route = [];
-
-				if (departure) {
-					var wpt = str[0];
-					$('#departureInput').val(wpt).change();
-					a = 1;
-				} else {
-					a = 0;
-					$('#departureInput').val("").change();
-				}
-				for (var i = 0; i + a < str.length; i++) {
-					fmc.waypoints.addWaypoint();
-					var wpt = str[i + a];
-					$('#waypoints input.wpt:eq(' + i + ')').val(wpt).change();
-				}
-				if (arrival) {
-					var wpt = str[str.length - 1];
-					$('#arrivalInput').val(wpt).change();
-				}
-			} else {
-				alert("Invalid Waypoints Input");
-			}
-		} else fmc.waypoints.loadFromSave(s);
-	};
-
-	/**
-	 * Adds 1 waypoint input field
-	 */
-	fmc.waypoints.addWaypoint = function () {
-		var waypoints = fmc.waypoints;
-		waypoints.route.length++;
-		var n = waypoints.route.length;
-		waypoints.route[waypoints.route.length - 1] = [];
-		$('<tr>')
-			.addClass('waypoint')
-			.append(
-
-				// Waypoint
-				$('<td>')
-				.append(
-					$('<div>')
-					.addClass('input-prepend input-append')
-					.append(
-						$('<input>')
-						.addClass('input-medium')
-						.addClass('wpt')
-						.css('width', '75px')
-						.attr('type', 'text')
-						.attr('placeholder', 'Fix/Apt.')
-						.change(function () {
-							var n = $(this).val();
-							var coords = waypoints.getCoords(n);
-							var index = $(this).parents().eq(2).index() - 1;
-							if (!coords) {
-								waypoints.route[index][0] = n;
-								waypoints.route[index][4] = false;
-							} else {
-								$(this).parents().eq(2).children('.position').children('div').children('.lat').val(coords[0]);
-								$(this).parents().eq(2).children('.position').children('div').children('.lon').val(coords[1]);
-								waypoints.route[index] = [n, coords[0], coords[1], undefined, true];
-							}
-						})
-					)
-				)
-
-				// Position
-
-				
-			,	$('<td>')
-				.addClass('position')
-				.append(
-					$('<div>')
-					.addClass('input-prepend input-append')
-					.append(
-						$('<input>')
-						.addClass('input-medium lat')
-						.css('width', '80px')
-						.attr({
-							'type': 'text'
-						,	'tabindex': '-1'
-						})
-						.change(function () {
-							var index = $(this).parents().eq(2).index() - 1;
-							waypoints.route[index][1] = waypoints.formatCoords($(this).val());
-							waypoints.route[index][4] = false;
-						})
-					,	$('<input>')
-						.addClass('input-medium lon')
-						.css('width', '80px')
-						.attr({
-							'type': 'text'
-						,	'tabindex': '-1'
-						})
-						.change(function () {
-							var index = $(this).parents().eq(2).index() - 1;
-							waypoints.route[index][2] = waypoints.formatCoords($(this).val());
-							waypoints.route[index][4] = false;
-						})
-					)
-				)
-
-				// Altitude
-
-				
-			,	$('<td>')
-				.addClass('altitude')
-				.append(
-					$('<div>')
-					.addClass('input-prepend input-append')
-					.append(
-						$('<input>')
-						.addClass('input-medium alt')
-						.css('width', '40px')
-						.attr({
-							'type': 'text'
-						,	'tabindex': '-1'
-						,	'placeholder': 'Ft.'
-						})
-						.change(function () {
-							var index = $(this).parents().eq(2).index() - 1;
-							waypoints.route[index][3] = Number($(this).val());
-						})
-					)
-				)
-
-				// Actions
-
-				
-			,	$('<td>')
-				.append(
-					$('<div>')
-					.addClass('input-prepend input-append')
-					.append(
-
-						// Activate
-						$('<button>')
-						.attr('type', 'button')
-						.addClass('btn btn-standard activate')
-						.text('Activate')
-						.click(function () {
-							var n = $(this).parents().eq(2).index();
-							activateLeg(n);
-						})
-
-						// Shift up
-
-						
-					,	$('<button>')
-						.attr('type', 'button')
-						.addClass('btn btn-info')
-						.append($('<i>')
-						.addClass('icon-arrow-up'))
-						.click(function () {
-							var row = $(this).parents().eq(2);
-							fmc.waypoints.shiftWaypoint(row, row.index(), "up");
-						})
-
-						// Shift down
-
-						
-					,	$('<button>')
-						.attr('type', 'button')
-						.addClass('btn btn-info')
-						.append($('<i>')
-						.addClass('icon-arrow-down'))
-						.click(function () {
-							var row = $(this).parents().eq(2);
-							fmc.waypoints.shiftWaypoint(row, row.index(), "down");
-						})
-
-						// Remove
-
-						
-					,	$('<button>')
-						.attr('type', 'button')
-						.addClass('btn btn-danger')
-						.append($('<i>')
-						.addClass('icon-remove'))
-						.click(function () {
-							var n = $(this).parents().eq(2).index();
-							waypoints.removeWaypoint(n);
-						})
-					)
-				)
-			)
-			.appendTo('#waypoints');
-	};
-
-	/**
-	 * Removes a waypoint
-	 * 
-	 * @param {Number} n The index of which will be removed
-	 */
-	fmc.waypoints.removeWaypoint = function (n) {
-		$('#waypoints tr:nth-child(' + (n + 1) + ')').remove();
-		fmc.waypoints.route.splice((n - 1), 1);
-		if (fmc.waypoints.nextWaypoint == n) {
-			fmc.waypoints.nextWaypoint = null;
-		}
-	};
-
-	/**
-	 * Saves the waypoints data into localStorage
-	 */
-	fmc.waypoints.saveData = function () {
-		if (fmc.waypoints.route.length < 1 || !fmc.waypoints.route[0][0]) {
-			alert("There is no route to save");
-		} else {
-			localStorage.removeItem('fmcWaypoints');
-			var arr = fmc.waypoints.toRouteString();
-			localStorage.setItem("fmcWaypoints", arr);
-		}
-	};
-
-	/**
-	 * Retrieves the saved data and adds to the waypoint list
-	 *
-	 * @param {String} arg The generated route
-	 */
-	fmc.waypoints.loadFromSave = function (arg) {
-
-		/**
-		 * The argument passed in [optional] or the localStorage is a 
-		 * 3D array in String format. arr is the array after JSON.parse 
-		 *	
-		 * @param {String} arr[0] Departure input
-		 * @param {String} arr[1] Arrival Input
-		 * @param {String} arr[2] Flight Number
-		 * @param {Array} arr[3] 2D array, the route
-		 */
-
-		arg = arg || localStorage.getItem('fmcWaypoints');
-		var waypoints = fmc.waypoints;
-		var arr = JSON.parse(arg);
-		localStorage.removeItem('fmcWaypoints');
-
-		if (arr) {
-			waypoints.route = [];
-			var route = arr[3];
-			var n = $('#waypoints tbody tr').length - 1;
-			for (var i = 0; i < n; i++) {
-				waypoints.removeWaypoint(1);
-			}
-			// JSON.stringify turns undefined into null; this loop turns it back
-			route.forEach(function (wpt) {
-				if (!wpt[3] || wpt[3] == null || wpt[3] == 0) wpt[3] = undefined;
-			});
-
-			if (arr[0]) $('#departureInput').val(arr[0]).change();
-			if (arr[1]) $('#arrivalInput').val(arr[1]).change();
-			if (arr[2]) $('#flightNumInput').val(arr[2]).change();
-
-			for (var i = 0; i < route.length; i++) {
-				waypoints.addWaypoint();
-				$('#waypoints input.wpt:eq(' + i + ')').val(route[i][0]).change(); // Input the fix
-
-				// If the waypoint is not eligible or a duplicate
-				if (!route[i][4] || !$('#waypoints input.lat:eq(' + i + ')').val()) {
-					$('#waypoints input.lat:eq(' + i + ')').val(route[i][1]).change(); // Input the lat.
-					$('#waypoints input.lon:eq(' + i + ')').val(route[i][2]).change(); // Input the lon.
-				}
-
-				if (route[i][3]) // If there is an altitude restriction
-					$('#waypoints input.alt:eq(' + i + ')').val(route[i][3]).change();
-			}
-			// Auto-saves the data once again
-			waypoints.saveData();
-
-		} else alert("You did not save the waypoints or you cleared the browser's cache");
-	};
-
-	/**
-	 * Shifts a waypoint up or down one step
-	 *
-	 * @param {jQuery element} r The element to be moved in the UI
-	 * @param {Number} n Index of this waypoint
-	 * @param <restricted>{String} d Direction of shifting, "up" or "down"
-	 */
-	fmc.waypoints.shiftWaypoint = function (r, n, d) {
-		var waypoints = fmc.waypoints;
-		console.log("Waypoint #" + n + " moved " + d);
-		if (!(d == "up" && n == 1 || d == "down" && n == waypoints.route.length)) {
-			if (d == "up") {
-				waypoints.route.move(n - 1, n - 2);
-				r.insertBefore(r.prev());
-				if (waypoints.nextWaypoint == n) {
-					waypoints.nextWaypoint = n - 1;
-				} else if (waypoints.nextWaypoint == n - 1) {
-					waypoints.nextWaypoint = n + 1;
-				}
-			} else {
-				waypoints.route.move(n - 1, n);
-				r.insertAfter(r.next());
-				if (waypoints.nextWaypoint == n) {
-					waypoints.nextWaypoint = n + 1;
-				} else if (waypoints.nextWaypoint == n + 1) {
-					waypoints.nextWaypoint = n - 1;
-				}
-			}
-		}
-	}
-
-	// Adds a confirm window to prevent accidental reset
-	ges.resetFlight = function () {
-		if (window.confirm('Reset Flight?')) {
-			if (ges.lastFlightCoordinates) {
-				ges.flyTo(ges.lastFlightCoordinates, true);
-				updateLog('Flight reset');
-			}
-		}
-	};
-
-	// Tracks pause event to log
-	ges.togglePause = function () {
-		if (!ges.pause) {
-			updateLog('Flight paused');
-			ges.doPause();
-		} else {
-			ges.undoPause();
-			updateLog('Flight resumed');
-		}
-	};
 
 	/**
 	 * Enables VNAV if not activated, disables if activated
@@ -1474,7 +1111,10 @@ button: $('<button>')
 	function removeLogData() {
 		$('#logData tr').remove('.data');
 	}
-
+	//----------------------------------------------------------------------------------------
+	
+	
+	
 	/** 
 	 * Defines Array prototype to move an array
 	 *
@@ -1492,7 +1132,30 @@ button: $('<button>')
 		return this;
 	};
 	
-	// FMC modal UI
+	// Adds a confirm window to prevent accidental reset
+	gefs.resetFlight = function () {
+		if (window.confirm('Reset Flight?')) {
+			if (gefs.lastFlightCoordinates) {
+				gefs.flyTo(gefs.lastFlightCoordinates, true);
+				updateLog('Flight reset');
+			}
+		}
+	};
+
+	// Tracks pause event to log
+	gefs.togglePause = function () {
+		if (!gefs.pause) {
+			updateLog('Flight paused');
+			gefs.doPause();
+		} else {
+			gefs.undoPause();
+			updateLog('Flight resumed');
+		}
+	};
+
+	
+	
+	//-------------- FMC USER INTERFACE ------------------------------------------------------
 	fmc.ui.modal = 
 	$('<div>')
 	.addClass('modal hide gefs-stopPropagation')
@@ -2162,7 +1825,6 @@ button: $('<button>')
 				)
 			)
 		)
-,	$('<iframe frame-border="no" class="gefs-shim-iframe"></iframe>')
 	).appendTo('body');
 
 	// Hides backdrop for the modal	
@@ -2178,4 +1840,5 @@ button: $('<button>')
 	$('#fmcModal').keyup(function (event) {
 		event.stopImmediatePropagation();
 	});
+	//----------------------------------------------------------------------------------------
 });
