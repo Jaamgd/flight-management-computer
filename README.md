@@ -2,7 +2,7 @@
 
 This userscript adds an easy to use FMC to the free online flight simulator GEFS-Online.
 
-# Installation 
+## Installation 
 
 To add the script to the game, you must first have [Autopilot++][1] installed. Then, follow the procedures shown on the appropriate tutorial video: 
 - [Google Chrome / Safari][2]
