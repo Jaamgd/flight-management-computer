@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name FMC Extension for GEFS-Online
-// @description This extension (by Ethan Shields) adds an FMC which controls other features included such as auto-climb, auto-descent, progress information, etc.
+// @description This extension (by Ethan Shields) adds an FMC which controls other features included such as VNAV, LNAV, route, progress information, etc.
 // @namespace GEFS-Plugins
-// @match http://*gefs-online.com/gefs.php*
+// @match http://*.gefs-online.com/gefs.php*
 // @match http://localhost:3000/gefs.php*
 // @match http://127.0.0.1:3000/gefs.php*
 // @run-at document-end
@@ -11,10 +11,33 @@
 // ==/UserScript==
 
 
-//-------------- FMC LIBRARY - publicly accessible methods and variables ----------------
-window.fmc = {};
+// Inits FMC
+(function (initFMC) {
+	var timer = setInterval(function () {
+		if (gefs.aircraft && gefs.aircraft.animationValue && gefs.aircraft.animationValue.altitude) {
+			clearInterval(timer);
+			initFMC();
+		}
+	}, 4);
+})
+(function () {
 
-fmc.math = {
+	var tod;
+	var VNAV = false;
+	var arrival = [];
+	var cruise;
+	var phase = "climb";
+	var todCalc = false;
+	var fieldElev = 0;
+
+	// Global variables/constants
+	window.feetToNM = 1 / 6076;
+	window.nmToFeet = 6076;
+	
+	//-------------- FMC LIBRARY - publicly accessible methods and variables ----------------
+	window.fmc = {};
+
+	fmc.math = {
 	/**
 	 * Turns degrees to radians
 	 * 
@@ -107,461 +130,1110 @@ fmc.math = {
 	earthRadiusNM: 3440.06
 };
 
-fmc.waypoints = {
-	input: "",
-	route: [],
-	nextWaypoint: "",
-	
-	/**
-	 * Turns the waypoints into an array
-	 *
-	 * @return {Array} The array of waypoint names
-	 */
-	makeFixesArray: function () {
-		var result = [];
-		var departureVal = $('#departureInput').val();
-		if (departureVal) result.push(departureVal);
-		$('.waypoint td:first-child div > input').each(function() {
-			result.push($(this).val());
-		});
-		var arrivalVal = $('#arrivalInput').val();
-		if (arrivalVal) result.push(arrivalVal);
+	fmc.waypoints = {
+		input: "",
+		route: [],
+		nextWaypoint: "",
 		
-		return result;
-	},
-	
-	/**
-	 * Joins the fixes array into a string
-	 *
-	 * @return {String} All waypoints, each seperated by a space
-	 */
-	toFixesString: function () {
-		return fmc.waypoints.makeFixesArray().join(" ");
-	}, 
-	
-	/**
-	 * Makes a sharable route
-	 * 
-	 * @return {String} A sharable route with airports and waypoints, 
-	 * 					using <code>JSON.stringify</code> method
-	 */
-	toRouteString: function () {
-		return JSON.stringify ([
-			$('#departureInput').val(), 
-			$('#arrivalInput').val(), 
-			$('#flightNumInput').val(), 
-			fmc.waypoints.route
-		]);
-	},
-	
-	/**
-	 * Accesses autopilot_pp library and find the coordinates for the waypoints
-	 * 
-	 * @param {String} wpt The waypoint to check for eligibility
-	 * @return {Array} Array of coordinates if eligible, 
-	 *         {Boolean} false otherwise
-	 */
-	getCoords: function (wpt) {
-		if (autopilot_pp.require('icaoairports')[wpt]) {
-			return autopilot_pp.require('icaoairports')[wpt];
-		} else if (autopilot_pp.require('waypoints')[wpt]) {
-			return autopilot_pp.require('waypoints')[wpt];
-		} else return false;
-	},
-	
-	/**
-	 * Turns the coordinate entered from minutes-seconds format to decimal format
-	 * 
-	 * @param {String} a Coordinate in minutes-seconds format
-	 * @return {Number} Coordinate in decimal format
-	 */
-	formatCoords: function (a) {
-		if (a.indexOf(' ') > -1) {
-			var array = a.split(' ');
-			var d = Number(array[0]);
-			var m = Number(array[1]) / 60;
-			var coords;
-			if (d < 0) coords = d - m;
-			else coords = d + m;
-			return coords;
-		} else return Number(a);
-	},
-	
-	/**
-	 * Turns a normal waypoints input or shared waypoints string into waypoints
-	 * 
-	 * @param {String} an input of waypoints or a shared/generated route
-	 */
-	toRoute: function (s) {
-		if (s.indexOf('["') !== 0) {
-			var index = s.indexOf('fpl=');
-			var isWaypoints = true;
-			var departure = $('#wptDeparture')[0].checked;
-			var arrival = $('#wptArrival')[0].checked;
-			var n = $('#waypoints tbody tr').length - 1;
-			var a;
-			var str = [];
-
-			str = s.trim().toUpperCase().split(" ");
-			for (var i = 0; i < str.length; i++)
-					if (str[i].length > 5 || str[i].length < 1 || !(/^\w+$/.test(str[i])))
-						isWaypoints = false;
-			
-			if (isWaypoints) {
-				for (var i = 0; i < n; i++) {
-					fmc.waypoints.removeWaypoint(1);
-				}
-				fmc.waypoints.route = [];
-
-				if (departure) {
-					var wpt = str[0];
-					$('#departureInput').val(wpt).change();
-					a = 1;
-				} else {
-					a = 0;
-					$('#departureInput').val("").change();
-				}
-				for (var i = 0; i + a < str.length; i++) {
-					fmc.waypoints.addWaypoint();
-					var wpt = str[i + a];
-					$('#waypoints input.wpt:eq(' + i + ')').val(wpt).change();
-				}
-				if (arrival) {
-					var wpt = str[str.length - 1];
-					$('#arrivalInput').val(wpt).change();
-				}
-			} else {
-				alert("Invalid Waypoints Input");
-			}
-		} else {
-			fmc.waypoints.loadFromSave(url);
-		}
-	},
-	
-	/**
-	 * Adds 1 waypoint input field to end of waypoints list
-	 */
-	addWaypoint: function () {
-		var waypoints = fmc.waypoints;
-		waypoints.route.length++;
-		var n = waypoints.route.length;
-		waypoints.route[waypoints.route.length - 1] = [];
-		$('<tr>')
-			.addClass('waypoint')
-			.append(
-
-				// Waypoint
-				$('<td>')
-				.append(
-					$('<div>')
-					.addClass('input-prepend input-append')
-					.append(
-						$('<input>')
-						.addClass('input-medium')
-						.addClass('wpt')
-						.css('width', '75px')
-						.attr('type', 'text')
-						.attr('placeholder', 'Fix/Apt.')
-						.change(function() {
-							var n = $(this).val();
-							var coords = waypoints.getCoords(n);
-							var index = $(this).parents().eq(2).index() - 1;
-							if (!coords) {
-								waypoints.route[index][0] = n;
-								waypoints.route[index][4] = false;
-							} else {
-								$(this).parents().eq(2).children('.position').children('div').children('.lat').val(coords[0]);
-								$(this).parents().eq(2).children('.position').children('div').children('.lon').val(coords[1]);
-								waypoints.route[index] = [n, coords[0], coords[1], undefined, true];
-							}
-						})
-					)
-				)
-
-				// Position
-				, $('<td>')
-				.addClass('position')
-				.append(
-					$('<div>')
-					.addClass('input-prepend input-append')
-					.append(
-						$('<input>')
-						.addClass('input-medium lat')
-						.css('width', '80px')
-						.attr({
-							'type': 'text',
-							'tabindex': '-1'
-						})
-						.change(function() {
-							var index = $(this).parents().eq(2).index() - 1;
-							waypoints.route[index][1] = waypoints.formatCoords($(this).val());
-							waypoints.route[index][4] = false;
-						}), $('<input>')
-						.addClass('input-medium lon')
-						.css('width', '80px')
-						.attr({
-							'type': 'text',
-							'tabindex': '-1'
-						})
-						.change(function() {
-							var index = $(this).parents().eq(2).index() - 1;
-							waypoints.route[index][2] = waypoints.formatCoords($(this).val());
-							waypoints.route[index][4] = false;
-						})
-					)
-				)
-
-				// Altitude
-				, $('<td>')
-				.addClass('altitude')
-				.append(
-					$('<div>')
-					.addClass('input-prepend input-append')
-					.append(
-						$('<input>')
-						.addClass('input-medium alt')
-						.css('width', '40px')
-						.attr({
-							'type': 'text',
-							'tabindex': '-1',
-							'placeholder': 'Ft.'
-						})
-						.change(function() {
-							var index = $(this).parents().eq(2).index() - 1;
-							waypoints.route[index][3] = Number($(this).val());
-						})
-					)
-				)
-
-				// Actions
-				, $('<td>')
-				.append(
-					$('<div>')
-					.addClass('input-prepend input-append')
-					.append(
-
-						// Activate
-						$('<button>')
-						.attr('type', 'button')
-						.addClass('btn btn-standard activate')
-						.text('Activate')
-						.click(function() {
-							var n = $(this).parents().eq(2).index();
-							activateLeg(n);
-						})
-
-						// Shift up
-						, $('<button>')
-						.attr('type', 'button')
-						.addClass('btn btn-info')
-						.append($('<i>').addClass('icon-arrow-up'))
-						.click(function() {
-							var row = $(this).parents().eq(2);
-							fmc.waypoints.shiftWaypoint(row, row.index(), "up");
-						})
-
-						// Shift down
-						, $('<button>')
-						.attr('type', 'button')
-						.addClass('btn btn-info')
-						.append($('<i>').addClass('icon-arrow-down'))
-						.click(function() {
-							var row = $(this).parents().eq(2);
-							fmc.waypoints.shiftWaypoint(row, row.index(), "down");
-						})
-
-						// Remove
-						, $('<button>')
-						.attr('type', 'button')
-						.addClass('btn btn-danger')
-						.append($('<i>').addClass('icon-remove'))
-						.click(function() {
-							var n = $(this).parents().eq(2).index();
-							waypoints.removeWaypoint(n);
-						})
-					)
-				)
-			).appendTo('#waypoints');
-	},
-	
-	/**
-	 * Removes a waypoint
-	 * 
-	 * @param {Number} n The index of which will be removed
-	 */
-	removeWaypoint: function (n) {
-		$('#waypoints tr:nth-child(' + (n + 1) + ')').remove();
-		fmc.waypoints.route.splice((n - 1), 1);
-		if (fmc.waypoints.nextWaypoint == n) {
-			fmc.waypoints.nextWaypoint = null;
-		}
-	},
-	
-	/**
-	 * Saves the waypoints data into localStorage
-	 */
-	saveData: function () {
-		if (fmc.waypoints.route.length < 1 || !fmc.waypoints.route[0][0]) {
-			alert ("There is no route to save");
-		} else {
-			localStorage.removeItem('fmcWaypoints');
-			var arr = fmc.waypoints.toRouteString();
-			localStorage.setItem("fmcWaypoints", arr);
-		}
-	},
-	
-	/**
-	 * Retrieves the saved data and adds to the waypoint list
-	 *
-	 * @param {String} arg The generated route
-	 */
-	loadFromSave: function (arg) {
-	
-	/**
-	 * The argument passed in [optional] or the localStorage is a 
-	 * 3D array in String format. arr is the array after JSON.parse 
-	 *	
-	 * @param {String} arr[0] Departure input
-	 * @param {String} arr[1] Arrival Input
-	 * @param {String} arr[2] Flight Number
-	 * @param {Array} arr[3] 2D array, the route
-	 */
-		
-		arg = arg || localStorage.getItem('fmcWaypoints');
-		var waypoints = fmc.waypoints;
-		var arr = JSON.parse(arg);
-		localStorage.removeItem('fmcWaypoints');
-		
-		if (arr) {
-			waypoints.route = [];
-			var route = arr[3];
-			var n = $('#waypoints tbody tr').length - 1;
-			for (var i = 0; i < n; i++) {
-				waypoints.removeWaypoint(1);
-			}
-			// JSON.stringify turns undefined into null; this loop turns it back
-			route.forEach(function (wpt) {
-				if (!wpt[3] || wpt[3] == null || wpt[3] == 0) wpt[3] = undefined;
+		/**
+		 * Turns the waypoints into an array
+		 *
+		 * @return {Array} The array of waypoint names
+		 */
+		makeFixesArray: function () {
+			var result = [];
+			var departureVal = $('#departureInput').val();
+			if (departureVal) result.push(departureVal);
+			$('.waypoint td:first-child div > input').each(function() {
+				result.push($(this).val());
 			});
+			var arrivalVal = $('#arrivalInput').val();
+			if (arrivalVal) result.push(arrivalVal);
 			
-			if (arr[0]) $('#departureInput').val(arr[0]).change();
-			if (arr[1]) $('#arrivalInput').val(arr[1]).change();
-			if (arr[2]) $('#flightNumInput').val(arr[2]).change();
-			
-			for (var i = 0; i < route.length; i++) {
-				waypoints.addWaypoint();
-				$('#waypoints input.wpt:eq(' + i + ')').val(route[i][0]).change(); // Input the fix
+			return result;
+		},
+		
+		/**
+		 * Joins the fixes array into a string
+		 *
+		 * @return {String} All waypoints, each seperated by a space
+		 */
+		toFixesString: function () {
+			return fmc.waypoints.makeFixesArray().join(" ");
+		}, 
+		
+		/**
+		 * Makes a sharable route
+		 * 
+		 * @return {String} A sharable route with airports and waypoints, 
+		 * 					using <code>JSON.stringify</code> method
+		 */
+		toRouteString: function () {
+			return JSON.stringify ([
+				$('#departureInput').val(), 
+				$('#arrivalInput').val(), 
+				$('#flightNumInput').val(), 
+				fmc.waypoints.route
+			]);
+		},
+		
+		/**
+		 * Accesses autopilot_pp library and find the coordinates for the waypoints
+		 * 
+		 * @param {String} wpt The waypoint to check for eligibility
+		 * @return {Array} Array of coordinates if eligible, 
+		 *         {Boolean} false otherwise
+		 */
+		getCoords: function (wpt) {
+			if (autopilot_pp.require('icaoairports')[wpt]) {
+				return autopilot_pp.require('icaoairports')[wpt];
+			} else if (autopilot_pp.require('waypoints')[wpt]) {
+				return autopilot_pp.require('waypoints')[wpt];
+			} else return false;
+		},
+		
+		/**
+		 * Turns the coordinate entered from minutes-seconds format to decimal format
+		 * 
+		 * @param {String} a Coordinate in minutes-seconds format
+		 * @return {Number} Coordinate in decimal format
+		 */
+		formatCoords: function (a) {
+			if (a.indexOf(' ') > -1) {
+				var array = a.split(' ');
+				var d = Number(array[0]);
+				var m = Number(array[1]) / 60;
+				var coords;
+				if (d < 0) coords = d - m;
+				else coords = d + m;
+				return coords;
+			} else return Number(a);
+		},
+		
+		/**
+		 * Turns a normal waypoints input or shared waypoints string into waypoints
+		 * 
+		 * @param {String} an input of waypoints or a shared/generated route
+		 */
+		toRoute: function (s) {
+			if (s.indexOf('["') !== 0) {
+				var index = s.indexOf('fpl=');
+				var isWaypoints = true;
+				var departure = $('#wptDeparture')[0].checked;
+				var arrival = $('#wptArrival')[0].checked;
+				var n = $('#waypoints tbody tr').length - 1;
+				var a;
+				var str = [];
+
+				str = s.trim().toUpperCase().split(" ");
+				for (var i = 0; i < str.length; i++)
+						if (str[i].length > 5 || str[i].length < 1 || !(/^\w+$/.test(str[i])))
+							isWaypoints = false;
 				
-				// If the waypoint is not eligible or a duplicate
-				if (!route[i][4] || !$('#waypoints input.lat:eq(' + i + ')').val()) {
-					$('#waypoints input.lat:eq(' + i + ')').val(route[i][1]).change(); // Input the lat.
-					$('#waypoints input.lon:eq(' + i + ')').val(route[i][2]).change(); // Input the lon.
-				}
-				
-				if (route[i][3]) // If there is an altitude restriction
-					$('#waypoints input.alt:eq(' + i + ')').val(route[i][3]).change();
-			}
-			// Auto-saves the data once again
-			waypoints.saveData();
-			
-		} else alert ("You did not save the waypoints or you cleared the browser's cache");
-	},
-	
-	/**
-	 * Shifts a waypoint up or down one step
-	 *
-	 * @param {jQuery element} r The element to be moved in the UI
-	 * @param {Number} n Index of this waypoint
-	 * @param <restricted>{String} d Direction of shifting, "up" or "down"
-	 */
-	shiftWaypoint: function(r, n, d) {
-		var waypoints = fmc.waypoints;
-		console.log("Waypoint #" + n + " moved " + d);
-		if (!(d == "up" && n == 1 || d == "down" && n == waypoints.route.length)) {
-			if (d == "up") {
-				waypoints.route.move(n - 1, n - 2);
-				r.insertBefore(r.prev());
-				if (waypoints.nextWaypoint == n) {
-					waypoints.nextWaypoint = n - 1;
-				} else if (waypoints.nextWaypoint == n - 1) {
-					waypoints.nextWaypoint = n + 1;
+				if (isWaypoints) {
+					for (var i = 0; i < n; i++) {
+						fmc.waypoints.removeWaypoint(1);
+					}
+					fmc.waypoints.route = [];
+
+					if (departure) {
+						var wpt = str[0];
+						$('#departureInput').val(wpt).change();
+						a = 1;
+					} else {
+						a = 0;
+						$('#departureInput').val("").change();
+					}
+					for (var i = 0; i + a < str.length; i++) {
+						fmc.waypoints.addWaypoint();
+						var wpt = str[i + a];
+						$('#waypoints input.wpt:eq(' + i + ')').val(wpt).change();
+					}
+					if (arrival) {
+						var wpt = str[str.length - 1];
+						$('#arrivalInput').val(wpt).change();
+					}
+				} else {
+					alert("Invalid Waypoints Input");
 				}
 			} else {
-				waypoints.route.move(n - 1, n);
-				r.insertAfter(r.next());
-				if (waypoints.nextWaypoint == n) {
-					waypoints.nextWaypoint = n + 1;
-				} else if (waypoints.nextWaypoint == n + 1) {
-					waypoints.nextWaypoint = n - 1;
+				fmc.waypoints.loadFromSave(url);
+			}
+		},
+		
+		/**
+		 * Adds 1 waypoint input field to end of waypoints list
+		 */
+		addWaypoint: function () {
+			var waypoints = fmc.waypoints;
+			waypoints.route.length++;
+			var n = waypoints.route.length;
+			waypoints.route[waypoints.route.length - 1] = [];
+			$('<tr>')
+				.addClass('waypoint')
+				.append(
+
+					// Waypoint
+					$('<td>')
+					.append(
+						$('<div>')
+						.addClass('input-prepend input-append')
+						.append(
+							$('<input>')
+							.addClass('input-medium')
+							.addClass('wpt')
+							.css('width', '75px')
+							.attr('type', 'text')
+							.attr('placeholder', 'Fix/Apt.')
+							.change(function() {
+								var n = $(this).val();
+								var coords = waypoints.getCoords(n);
+								var index = $(this).parents().eq(2).index() - 1;
+								if (!coords) {
+									waypoints.route[index][0] = n;
+									waypoints.route[index][4] = false;
+								} else {
+									$(this).parents().eq(2).children('.position').children('div').children('.lat').val(coords[0]);
+									$(this).parents().eq(2).children('.position').children('div').children('.lon').val(coords[1]);
+									waypoints.route[index] = [n, coords[0], coords[1], undefined, true];
+								}
+							})
+						)
+					)
+
+					// Position
+					, $('<td>')
+					.addClass('position')
+					.append(
+						$('<div>')
+						.addClass('input-prepend input-append')
+						.append(
+							$('<input>')
+							.addClass('input-medium lat')
+							.css('width', '80px')
+							.attr({
+								'type': 'text',
+								'tabindex': '-1'
+							})
+							.change(function() {
+								var index = $(this).parents().eq(2).index() - 1;
+								waypoints.route[index][1] = waypoints.formatCoords($(this).val());
+								waypoints.route[index][4] = false;
+							}), $('<input>')
+							.addClass('input-medium lon')
+							.css('width', '80px')
+							.attr({
+								'type': 'text',
+								'tabindex': '-1'
+							})
+							.change(function() {
+								var index = $(this).parents().eq(2).index() - 1;
+								waypoints.route[index][2] = waypoints.formatCoords($(this).val());
+								waypoints.route[index][4] = false;
+							})
+						)
+					)
+
+					// Altitude
+					, $('<td>')
+					.addClass('altitude')
+					.append(
+						$('<div>')
+						.addClass('input-prepend input-append')
+						.append(
+							$('<input>')
+							.addClass('input-medium alt')
+							.css('width', '40px')
+							.attr({
+								'type': 'text',
+								'tabindex': '-1',
+								'placeholder': 'Ft.'
+							})
+							.change(function() {
+								var index = $(this).parents().eq(2).index() - 1;
+								waypoints.route[index][3] = Number($(this).val());
+							})
+						)
+					)
+
+					// Actions
+					, $('<td>')
+					.append(
+						$('<div>')
+						.addClass('input-prepend input-append')
+						.append(
+
+							// Activate
+							$('<button>')
+							.attr('type', 'button')
+							.addClass('btn btn-standard activate')
+							.text('Activate')
+							.click(function() {
+								var n = $(this).parents().eq(2).index();
+								activateLeg(n);
+							})
+
+							// Shift up
+							, $('<button>')
+							.attr('type', 'button')
+							.addClass('btn btn-info')
+							.append($('<i>').addClass('icon-arrow-up'))
+							.click(function() {
+								var row = $(this).parents().eq(2);
+								fmc.waypoints.shiftWaypoint(row, row.index(), "up");
+							})
+
+							// Shift down
+							, $('<button>')
+							.attr('type', 'button')
+							.addClass('btn btn-info')
+							.append($('<i>').addClass('icon-arrow-down'))
+							.click(function() {
+								var row = $(this).parents().eq(2);
+								fmc.waypoints.shiftWaypoint(row, row.index(), "down");
+							})
+
+							// Remove
+							, $('<button>')
+							.attr('type', 'button')
+							.addClass('btn btn-danger')
+							.append($('<i>').addClass('icon-remove'))
+							.click(function() {
+								var n = $(this).parents().eq(2).index();
+								waypoints.removeWaypoint(n);
+							})
+						)
+					)
+				).appendTo('#waypoints');
+		},
+		
+		/**
+		 * Removes a waypoint
+		 * 
+		 * @param {Number} n The index of which will be removed
+		 */
+		removeWaypoint: function (n) {
+			$('#waypoints tr:nth-child(' + (n + 1) + ')').remove();
+			fmc.waypoints.route.splice((n - 1), 1);
+			if (fmc.waypoints.nextWaypoint == n) {
+				fmc.waypoints.nextWaypoint = null;
+			}
+		},
+		
+		/**
+		 * Saves the waypoints data into localStorage
+		 */
+		saveData: function () {
+			if (fmc.waypoints.route.length < 1 || !fmc.waypoints.route[0][0]) {
+				alert ("There is no route to save");
+			} else {
+				localStorage.removeItem('fmcWaypoints');
+				var arr = fmc.waypoints.toRouteString();
+				localStorage.setItem("fmcWaypoints", arr);
+			}
+		},
+		
+		/**
+		 * Retrieves the saved data and adds to the waypoint list
+		 *
+		 * @param {String} arg The generated route
+		 */
+		loadFromSave: function (arg) {
+		
+		/**
+		 * The argument passed in [optional] or the localStorage is a 
+		 * 3D array in String format. arr is the array after JSON.parse 
+		 *	
+		 * @param {String} arr[0] Departure input
+		 * @param {String} arr[1] Arrival Input
+		 * @param {String} arr[2] Flight Number
+		 * @param {Array} arr[3] 2D array, the route
+		 */
+			
+			arg = arg || localStorage.getItem('fmcWaypoints');
+			var waypoints = fmc.waypoints;
+			var arr = JSON.parse(arg);
+			localStorage.removeItem('fmcWaypoints');
+			
+			if (arr) {
+				waypoints.route = [];
+				var route = arr[3];
+				var n = $('#waypoints tbody tr').length - 1;
+				for (var i = 0; i < n; i++) {
+					waypoints.removeWaypoint(1);
+				}
+				// JSON.stringify turns undefined into null; this loop turns it back
+				route.forEach(function (wpt) {
+					if (!wpt[3] || wpt[3] == null || wpt[3] == 0) wpt[3] = undefined;
+				});
+				
+				if (arr[0]) $('#departureInput').val(arr[0]).change();
+				if (arr[1]) $('#arrivalInput').val(arr[1]).change();
+				if (arr[2]) $('#flightNumInput').val(arr[2]).change();
+				
+				for (var i = 0; i < route.length; i++) {
+					waypoints.addWaypoint();
+					$('#waypoints input.wpt:eq(' + i + ')').val(route[i][0]).change(); // Input the fix
+					
+					// If the waypoint is not eligible or a duplicate
+					if (!route[i][4] || !$('#waypoints input.lat:eq(' + i + ')').val()) {
+						$('#waypoints input.lat:eq(' + i + ')').val(route[i][1]).change(); // Input the lat.
+						$('#waypoints input.lon:eq(' + i + ')').val(route[i][2]).change(); // Input the lon.
+					}
+					
+					if (route[i][3]) // If there is an altitude restriction
+						$('#waypoints input.alt:eq(' + i + ')').val(route[i][3]).change();
+				}
+				// Auto-saves the data once again
+				waypoints.saveData();
+				
+			} else alert ("You did not save the waypoints or you cleared the browser's cache");
+		},
+		
+		/**
+		 * Shifts a waypoint up or down one step
+		 *
+		 * @param {jQuery element} r The element to be moved in the UI
+		 * @param {Number} n Index of this waypoint
+		 * @param <restricted>{String} d Direction of shifting, "up" or "down"
+		 */
+		shiftWaypoint: function(r, n, d) {
+			var waypoints = fmc.waypoints;
+			console.log("Waypoint #" + n + " moved " + d);
+			if (!(d == "up" && n == 1 || d == "down" && n == waypoints.route.length)) {
+				if (d == "up") {
+					waypoints.route.move(n - 1, n - 2);
+					r.insertBefore(r.prev());
+					if (waypoints.nextWaypoint == n) {
+						waypoints.nextWaypoint = n - 1;
+					} else if (waypoints.nextWaypoint == n - 1) {
+						waypoints.nextWaypoint = n + 1;
+					}
+				} else {
+					waypoints.route.move(n - 1, n);
+					r.insertAfter(r.next());
+					if (waypoints.nextWaypoint == n) {
+						waypoints.nextWaypoint = n + 1;
+					} else if (waypoints.nextWaypoint == n + 1) {
+						waypoints.nextWaypoint = n - 1;
+					}
 				}
 			}
 		}
+	};
+
+	fmc.vnav = {
+		profile: {}
 	}
-};
-
-fmc.vnav = {
-	profile: gefs.aircraft.setup.fmc
-}
-
-fmc.ui = {
-	// External distance indicator
-	externalDist: $('<div>')
-		.addClass('setup-section')
-		.css('padding-bottom','0px')
-		.append( $('<div>')
-			.addClass('input-prepend input-append')
-			.css('margin-bottom','4px')
-			.append(
-			$('<span>')
-				.addClass('add-on')
-				.text('Dest'),
-			$('<span>')
-				.addClass('add-on')
-				.css('background-color', 'white')
-				.css('width', '53px')
+	
+	fmc.ui = {
+		// External distance indicator
+		externalDist: $('<div>')
+			.addClass('setup-section')
+			.css('padding-bottom','0px')
+			.append( $('<div>')
+				.addClass('input-prepend input-append')
+				.css('margin-bottom','4px')
 				.append(
-				$('<div>')
-					.attr('id', 'externaldist')
+				$('<span>')
+					.addClass('add-on')
+					.text('Dest'),
+				$('<span>')
+					.addClass('add-on')
+					.css('background-color', 'white')
+					.css('width', '53px')
+					.append(
+					$('<div>')
+						.attr('id', 'externaldist')
+					)
 				)
-			)
-		).appendTo('td.gefs-f-standard'), 
-		
-	// FMC button
-	button: $('<button>')
-		.addClass('btn btn-success gefs-stopPropagation')
-		.attr('type', 'button')
-		.attr('data-toggle', 'modal')
-		.attr('data-target', '#fmcModal')
-		.css('margin-left','1px')
-		.text('FMC ')
-		.append( $('<i>').addClass('icon-list-alt'))
-		.appendTo('div.setup-section:nth-child(2)')
-};
-//----------------------------------------------------------------------------------------
+			).appendTo('td.gefs-f-standard'), 
+			
+		// FMC button
+		button: $('<button>')
+			.addClass('btn btn-success gefs-stopPropagation')
+			.attr('type', 'button')
+			.attr('data-toggle', 'modal')
+			.attr('data-target', '#fmcModal')
+			.css('margin-left','1px')
+			.text('FMC ')
+			.append(
+				$('<i>').addClass('icon-list-alt')
+			).appendTo('div.setup-section:nth-child(2)'),
+			
+		// FMC user interface
+		modal: $('<div>')
+			.addClass('modal hide gefs-stopPropagation')
+			.attr('data-backdrop', 'static')
+			.attr('id', 'fmcModal')
+			.attr('tabindex', '-1')
+			.attr('role', 'dialog')
+			.attr('aria-labelledby', 'fmcDialogBoxLabel')
+			.attr('aria-hidden', 'true')
+			.css('width', '590px')
+			.append(
 
+			// Dialog
+			$('<div>')
+				.addClass('modal-dialog')
+				.append(
 
-// Inits FMC
-(function (initFMC) {
-	var timer = setInterval(function () {
-		if (gefs.aircraft && gefs.aircraft.animationValue && gefs.aircraft.animationValue.altitude) {
-			clearInterval(timer);
-			initFMC();
-		}
-	}, 4);
-})
-(function () {
+				// Content
+				$('<div>')
+					.addClass('modal-content')
+					.append(
 
-	var tod;
-	var VNAV = false;
-	var arrival = [];
-	var cruise;
-	var phase = "climb";
-	var todCalc = false;
-	var fieldElev = 0;
+					// Header
+					$('<div>')
+						.addClass('modal-header')
+						.append(
+						$('<button>')
+							.addClass('close')
+							.attr('type', 'button')
+							.attr('data-dismiss', 'modal')
+							.attr('aria-hidden', 'true')
+							.text('\xD7') // &times;
+					,	$('<h3>')
+							.addClass('modal-title')
+							.attr('id', 'myModalLabel')
+							.css('text-align', 'center')
+							.text('Flight Management Computer')
+						)
 
-	// Global variables/constants
-	window.feetToNM = 1 / 6076;
-	window.nmToFeet = 6076;
+					// Body
+				,	$('<div>')
+						.addClass('modal-body')
+						.append(
+
+						// Navigation tabs
+						$('<ul>')
+							.addClass('nav nav-tabs')
+							.append(
+								$('<li>')
+									.addClass('active')
+									.append('<a href="#rte" data-toggle="tab">RTE</a>')
+							,	$('<li>')
+									.append('<a href="#arr" data-toggle="tab">DEP/ARR</a>')
+							/*,	$('<li>')
+									.append('<a href="#perf" data-toggle="tab">PERF</a>')*/
+							,	$('<li>')
+									.append('<a href="#vnav" data-toggle="tab">VNAV</a>')
+							,	$('<li>')
+									.append('<a href="#prog" data-toggle="tab">PROG</a>')
+							,	$('<li>')
+									.append('<a href="#load" data-toggle="tab">LOAD</a>')
+							/*,	$('<li>')
+									.append('<a href-"#save" data-toggle="tab">SAVE</a>')*/
+							,	$('<li>')
+									.append('<a href="#log" data-toggle="tab">LOG</a>')
+							)
+
+						// Tab Content
+					,	$('<div>')
+							.addClass('tab-content')
+							.css('padding', '5px')
+							.append(
+
+							// ROUTE TAB
+							$('<div>')
+								.addClass('tab-pane active')
+								.attr('id', 'rte')
+								.append(
+								$('<table>')
+									.append(
+									$('<tr>')
+										.append(
+										$('<table>')
+											.append(
+											$('<tr>')
+												.append(
+					
+												// Departure Airport input
+												$('<td>')
+													.css('padding', '5px')
+													.append(
+													$('<div>')
+														.addClass('input-prepend input-append')
+														.append(
+														$('<span>')
+															.addClass('add-on')
+															.text('Departure')
+													,	$('<input>')
+															.addClass('input-mini')
+															.attr('id','departureInput')
+															.attr('type', 'text')
+															.attr('placeholder', 'ICAO')
+														)
+													)
+				
+												// Arrival Airport input
+											,	$('<td>')
+													.css('padding', '5px')
+													.append(
+													$('<div>')
+														.addClass('input-prepend input-append')
+														.append(
+														$('<span>')
+															.addClass('add-on')
+															.text('Arrival')
+													,	$('<input>')
+															.addClass('input-mini')
+															.attr('type', 'text')
+															.attr('id','arrivalInput')
+															.attr('placeholder', 'ICAO')
+															.change(function() {
+																var wpt = $(this).val();
+																var coords = fmc.waypoints.getCoords(wpt);
+																if (!coords) {
+																	alert('Invalid Airport code');
+																	$(this).val('');
+																}
+																else arrival = [wpt, coords[0], coords[1]];
+															})
+														)
+													)
+					
+												// Flight # input
+											,	$('<td>')
+													.css('padding', '5px')
+													.append(
+													$('<div>')
+														.addClass('input-prepend input-append')
+														.append(
+														$('<span>')
+															.addClass('add-on')
+															.text('Flight #'), $('<input>')
+															.addClass('input-mini')
+															.attr('id', 'flightNumInput')
+															.css('width', '80px')
+															.attr('type', 'text')
+														)
+													)
+												)
+											)
+										)
+									
+									// Waypoints list labels
+								,	$('<tr>')
+										.append(
+										$('<table>')
+											.attr('id','waypoints')
+											.append( 
+											$('<tr>')
+												.append(
+												$('<td>').append('<th>Waypoints</th>')
+											,	$('<td>').append('<th>Position</th>')
+											,	$('<td>').append('<th>Altitude</th>')
+											,	$('<td>').append('<th>Actions</th>')
+												)
+											)
+										)
+										
+									// Add Waypoint
+								,	$('<tr>')
+										.append(
+										$('<div>')
+											.attr('id','waypointsAddDel')
+											.append(
+											$('<table>')
+												.append(
+												$('<tr>')
+													.append(
+													$('<td>')
+														.append(
+														$('<button>')
+															.addClass('btn btn-primary')
+															.attr('type', 'button')
+															.text('Add Waypoint ')
+															.append( $('<i>').addClass('icon-plus'))
+															.click(function() {
+																fmc.waypoints.addWaypoint();
+															})
+															.css('margin-right', '3px')
+														)
+													)
+												)
+											)
+										)
+										
+									// Save Route	
+								,	$('<tr>')
+										.append(
+										$('<div>')
+											.attr('id','saveRoute')
+											.append(
+											$('<table>')
+												.append(
+												$('<tr>')
+													.append(
+													$('<td>')
+														.append(
+														$('<button>')
+															.addClass('btn btn-info')
+															.attr('type', 'button')
+															.text('Save Route ')
+															.append( $('<i>').addClass('icon-file icon-white'))
+															.click(function() {
+																fmc.waypoints.saveData();
+															})
+															.css('margin-right', '3px')
+													,	$('<button>')
+															.addClass('btn btn-info')
+															.attr('type', 'button')
+															.text('Retrieve Route ')
+															.append( $('<i>').addClass('icon-refresh icon-white'))
+															.click(function() {
+																fmc.waypoints.loadFromSave();
+															})
+														)
+													)
+												)
+											)
+										)
+									)
+								)
+								
+							// ARRIVAL TAB
+						,	$('<div>')
+								.addClass('tab-pane')
+								.attr('id', 'arr')
+								.append(
+								$('<table>')
+									.append(
+									$('<tr>')
+										.append(
+										$('<td>')
+											.append(
+											$('<div>')
+												.addClass('input-prepend input-append')
+												.append(
+												$('<span>')
+													.addClass('add-on')
+													.text('TOD Dist.')
+											,	$('<input>')
+													.attr('id', 'todInput')
+													.attr('type', 'number')
+													.attr('min', '0')
+													.attr('placeholder', 'nm')
+													.css('width', '38px')
+													.change(function() {
+														tod = $(this).val();
+													})
+												)
+											)
+									,	$('<td>')
+											.append(
+											$('<div>')
+												.addClass('input-prepend input-append')
+												.append(
+												$('<span>')
+													.addClass('add-on')
+													.text('Automatically calculate TOD')
+											,	$('<button>')
+													.addClass('btn btn-standard')
+													.attr('type', 'button')
+													.text('OFF')
+													.click(function() {
+														if (!todCalc) {
+															$(this).removeClass('btn btn-standard').addClass('btn btn-warning').text('ON');
+															todCalc = true;
+														} else {
+															$(this).removeClass('btn btn-warning').addClass('btn btn-standard').text('OFF');
+															todCalc = false;
+														}
+													})
+												)
+											)
+										)
+								,	$('<tr>')
+										.append(
+										$('<td>')
+											.append(
+											$('<div>')
+												.addClass('input-prepend input-append')
+												.append(
+												$('<span>')
+													.addClass('add-on')
+													.text('Arrival Field Elev.')
+											,	$('<input>')
+													.attr('type','number')
+													.attr('placeholder','ft.')
+													.css('width','55px')
+													.change(function() {
+														fieldElev = Number($(this).val());
+													})
+												)
+											)
+										)
+									)
+								)
+
+							// VNAV tab
+						,	$('<div>')
+								.addClass('tab-pane')
+								.attr('id','vnav')
+								.append(
+									
+								// AUTO-CLIMB/DESCENT, CRUISE ALT ROW, PHASE, TOGGLE
+								$('<table>')
+									.append(
+									$('<tr>')
+										.append(
+										$('<td>')
+											.append(
+											$('<div>')
+											.addClass('input-prepend input-append')
+											.append(
+												$('<button>')
+													.addClass('btn')
+													.attr('id', 'vnavButton')
+													.text('VNAV ')
+													.append($('<i>').addClass('icon icon-resize-vertical'))
+													.click(function () {
+														toggleVNAV();
+													})
+											, 	$('<span>')
+													.addClass('add-on')
+													.text('Cruise Alt.')
+											, 	$('<input>')
+													.attr('type', 'number')
+													.attr('step', '100')
+													.attr('min', '0')
+													.attr('max', '100000')
+													.attr('placeholder', 'ft')
+													.css('width', '80px')
+													.change(function () {
+														cruise = Number( $(this).val());
+														console.log("Cruise Alt set to " + cruise + " ft.");
+													})
+												)
+											)
+										)	
+								,	$('<tr>')
+										.append(
+										
+										// Flight Phase
+										$('<td>')
+											.append(
+											$('<div>')
+												.addClass('input-prepend input-append')
+												.append(
+												$('<span>')
+													.addClass('add-on')
+													.text('Phase')
+											,	$('<button>')
+													.addClass('btn btn-info')
+													.attr('id', 'phaseBtn')
+													.text('Climb')
+													.css('height', '30px')
+													.css('width', '77px')
+													.click(function() {
+														if ( $('#phaseLock').hasClass('btn-default')) {
+															if (phase == "climb") {
+																$(this).text("Cruise");
+																phase = "cruise";
+															} else if (phase == "cruise") {
+																$(this).text("Descent");
+																phase = "descent";
+															} else {
+																$(this).text("Climb");
+																phase = "climb";
+															}
+															console.log("Phase set to " + phase)
+														}
+													})
+											,	$('<button>')
+													.addClass('btn btn-default')
+													.attr('id', 'phaseLock')
+													.append($('<i class="icon-lock"></i>'))
+													.click(function() {
+														if ($(this).hasClass('btn-default')) {
+															$(this).removeClass('btn-default').addClass('btn-danger');
+															console.log('Flight phase locked');
+														} else {
+															$(this).removeClass('btn-danger').addClass('btn-default');
+															console.log('Flight phase unlocked');
+														}
+													})
+												)	
+											)
+										
+										// SPD Toggle Button
+									,	$('<td>')
+											.append(
+											$('<div>')
+												.addClass('input-prepend input-append')
+												.append(
+														$('<span>')
+															.addClass('add-on')
+															.text('SPD Control')
+													,	$('<button>')
+															.addClass('btn btn-warning')
+															.attr('id', 'tSpd')
+															.text('ON')
+															.css('width', '60px')
+															.click(function() {toggleSpeed();})
+													)
+											)
+										)
+									)		
+								)
+							
+							// Progress tab
+						,	$('<div>')
+								.addClass('tab-pane')
+								.attr('id','prog')
+								.append(
+								$('<table>')
+									.append(
+									$('<tr>')
+										.append(
+										$('<td>')
+											.append(
+											$('<div>')
+												.addClass('input-prepend input-append')
+												.append(
+												$('<span>')
+													.addClass('add-on')
+													.text('Dest')
+											,	$('<span>')
+													.addClass('add-on')
+													.css('background-color', 'white')
+													.css('width', '53px')
+													.append( $('<div>').attr('id', 'flightdist'))
+											,	$('<span>')
+													.addClass('add-on')
+													.css('background-color', 'white')
+													.css('width', '50px')
+													.append(
+													$('<table>')
+														.css({'position': 'relative', 'top': '-6px'})
+														.append(
+														$('<tr>')
+															.append(
+															$('<td>')
+																.append(
+																$('<div>')
+																	.attr('id', 'flightete')
+																	.css('font-size', '70%')
+																	.css('height', '10px')
+																)
+															)
+													,	$('<tr>')
+															.append(
+															$('<td>')
+																.append(
+																$('<div>')
+																	.attr('id', 'flighteta')
+																	.css('font-size', '70%')
+																	.css('height', '10px')
+																)
+															)
+														)
+													)
+												)
+											)
+									,	$('<td>')
+											.append(
+											$('<div>')
+												.addClass('input-prepend input-append')
+												.append(
+												$('<span>')
+													.addClass('add-on')
+													.text('TOD')
+											,	$('<span>')
+													.addClass('add-on')
+													.css('background-color', 'white')
+													.css('width', '53px')
+													.append( $('<div>').attr('id', 'toddist'))
+											,	$('<span>')
+													.addClass('add-on')
+													.css('background-color', 'white')
+													.css('width', '50px')
+													.append(
+													$('<table>')
+														.css({'position': 'relative', 'top': '-6px'})
+														.append(
+														$('<tr>')
+															.append( 
+															$('<td>')
+																.append( $
+																('<div>')
+																	.attr('id', 'todete')
+																	.css('font-size', '70%')
+																	.css('height', '10px')
+																)
+															)
+													,	$('<tr>')
+															.append(
+															$('<td>')
+																.append(
+																$('<div>')
+																	.attr('id', 'todeta')
+																	.css('font-size', '70%')
+																	.css('height', '10px')
+																)
+															)
+														)
+													)
+												)
+											)
+										)
+								,	$('<tr>')
+										.append(
+										$('<td>')
+											.append(
+											$('<div>')
+												.addClass('input-prepend input-append')
+												.append( 
+												$('<span>')
+													.addClass('add-on')
+													.text('Next Waypoint ')
+													.append( $('<i>').addClass('icon-map-marker'))
+											,	$('<span>')
+													.addClass('add-on')
+													.css('background-color', 'white')
+													.css('width', '53px')
+													.append( $('<div>').attr('id', 'nextDist'))
+											,	$('<span>')
+													.addClass('add-on')
+													.css('background-color', 'white')
+													.css('width', '53px')
+													.append( $('<div>').attr('id', 'nextETE'))
+												)
+											)
+										)
+									)
+								)
+						
+							// LOAD TAB
+						,	$('<div>')
+								.addClass('tab-pane')
+								.attr('id', 'load')
+								.append(
+								$('<th>Enter waypoints seperated by spaces or a generated route</th>'),
+								$('<form>')
+									.attr('action','javascript:fmc.waypoints.toRoute(fmc.waypoints.input);')
+									.addClass('form-horizontal')
+									.append(
+									$('<fieldset>')
+										.append(
+										$('<div>')
+											.addClass('input-prepend input-append')
+											.append(
+											$('<span>')
+												.addClass('add-on')
+												.text('Waypoints ')
+												.append( $('<i>').addClass('icon-pencil'))
+										,	$('<input>')
+												.attr('type', 'text')
+												.addClass('input-xlarge gefs-stopPropagation')
+												.change(function() {
+													fmc.waypoints.input = $(this).val();
+												})
+											)
+									,	$('<label class = "checkbox"><input type="checkbox" id="wptDeparture" value="true" checked> First waypoint is departure airport</label>')
+									,	$('<label class = "checkbox"><input type="checkbox" id="wptArrival" value="true" checked> Last waypoint is arrival airport</label>')
+									,	$('<button>')
+											.attr('type', 'submit')
+											.addClass('btn btn-primary')
+											.text('Load Route ')
+											.append( $('<i>').addClass('icon-play'))
+										)
+										
+									// Share route / generate route	
+								,	$('<fieldset>')
+										.css('margin-top', '10px')
+										.append(
+											$('<button>')
+											.addClass('btn btn-warning')
+											.attr('type','button')
+											.text('Generate')
+											.click(function() {
+												$('#generateRoute').val(fmc.waypoints.toRouteString()).change();
+											}), 
+											$('<button>')
+											.addClass('btn btn-warning')
+											.attr('type','button')
+											.css('margin-left', '5px')
+											.text('Clear')
+											.click(function() {
+												$('#generateRoute').val("").change();
+											}),
+											$('<div>').css('margin-top', '10px').append(
+												$('<textarea>')
+												.attr('id', 'generateRoute')
+												.attr('placeholder', 'Generate route. Save it or share it')
+												.css('margin', '0px 0px 10px')
+												.css('width', '350px')
+												.css('height', '65px')
+												.css('resize', 'none')
+											)
+										)
+									)
+								)
+								
+							// Log tab
+						,	$('<div>')
+								.addClass('tab-pane')
+								.attr('id','log')
+								.append(
+								$('<table>')
+									.attr('id','logData')
+									.append(
+									$('<tr>')
+										.append(
+										$('<th>Time</th>')
+											.css('padding','0px 10px 0px 10px')
+									,	$('<th>Speed</th>')
+											.css('padding','0px 10px 0px 10px')
+									,	$('<th>Heading</th>')
+											.css('padding','0px 10px 0px 10px')
+									,	$('<th>Altitude</th>')
+											.css('padding','0px 10px 0px 10px')
+									,	$('<th>Lat.</th>')
+											.css('padding','0px 10px 0px 10px')
+									,	$('<th>Lon.</th>')
+											.css('padding','0px 10px 0px 10px')
+									,	$('<th>FPS</th>')
+											.css('padding','0px 10px 0px 10px')
+									,	$('<th>Other</th>')
+											.css('padding','0px 10px 0px 10px')
+										)
+									)
+							,	$('<button>')
+									.addClass('btn btn-danger')
+									.attr('type','button')
+									.click(function() {
+										removeLogData();
+									})
+									.text('Clear Log ')
+									.append( $('<i>').addClass('icon-remove-circle'))
+								)
+							)
+						)
+					
+					// Footer
+				,	$('<div>')
+						.addClass('modal-footer')
+						.append(
+						$('<button>')
+							.addClass('btn btn-default')
+							.attr('type', 'button')
+							.attr('data-dismiss', 'modal')
+							.text('Close')
+					,	$('<button>')
+							.addClass('btn btn-primary')
+							.attr('type', 'button')
+							.text('Save changes ')
+							.append( $('<i>').addClass('icon-hdd'))
+						)
+					)
+				)
+			).appendTo('body')
+	}
+	//----------------------------------------------------------------------------------------
+
 	
 	
 	//-------------- TIMED FUNCTIONS - functions that update the FMC data --------------------
@@ -711,6 +1383,33 @@ fmc.ui = {
 		updatePhase();
 	}
 
+	/**
+	 * Updates plane's clibm profile, set on a timer
+	 */
+	var profileTimer = setInterval(function() {
+		if (gefs.aircraft.setup.fmc) {
+			fmc.vnav.profile = gefs.aircraft.setup.fmc;
+			clearInterval(profileTimer);
+		} else {
+			fmc.vnav.profile = {
+				"climb": [
+					[1500, 4000, 210, 3000],
+					[4000, 10000, 250, 2500],
+					[10000, 18000, 295, 2200],
+					[18000, 27000, 295, 1800],
+					[27000, 30000, 295, 1500],
+					[30000, 1e99, 0.78, 1500]
+				],
+				"descent": [
+					[30000, 1e99, 0.78, -2300],
+					[18000, 30000, 295, -2100],
+					[12000, 18000, 280, -1800],
+					[10000, 12000, 250, -1500]
+				]
+			}
+		}
+	}, 5000);
+	
 	/**
 	 * Updates plane's flight log, set on a timer
 	 *
@@ -1132,6 +1831,43 @@ fmc.ui = {
 		return this;
 	};
 	
+	var oldLoad = Aircraft.prototype.load;
+	Aircraft.prototype.load = function (aircraftName, coordinates, bJustReload) {
+		// Obtains the old aircraft parts {Object} before loading
+		var oldParts = gefs.aircraft.object3d._children;
+
+		// Calls the original function to load an aircraft
+		oldLoad.call(this, aircraftName, coordinates, bJustReload);
+
+		// Checks if the old parts refer to a different object compared 
+		// with the current parts. It's crucial to set on a timer because 
+		// it takes time for the models to load completely
+		var timer = setInterval(function () {
+			if (oldParts !== gefs.aircraft.object3d._children) {
+				clearInterval(timer);
+				if (gefs.aircraft.setup.fmc) fmc.vnav.profile = gefs.aircraft.setup.fmc;
+				else {
+					fmc.vnav.profile = {
+						"climb": [
+							[1500, 4000, 210, 3000],
+							[4000, 10000, 250, 2500],
+							[10000, 18000, 295, 2200],
+							[18000, 27000, 295, 1800],
+							[27000, 30000, 295, 1500],
+							[30000, 1e99, 0.78, 1500]
+						],
+						"descent": [
+							[30000, 1e99, 0.78, -2300],
+							[18000, 30000, 295, -2100],
+							[12000, 18000, 280, -1800],
+							[10000, 12000, 250, -1500]
+						]
+					}
+				}
+			}
+		}, 16);
+	};
+	
 	// Adds a confirm window to prevent accidental reset
 	gefs.resetFlight = function () {
 		if (window.confirm('Reset Flight?')) {
@@ -1152,689 +1888,19 @@ fmc.ui = {
 			updateLog('Flight resumed');
 		}
 	};
-
+	
+	// Initializes to 1 waypoint input field on load
+	fmc.waypoints.addWaypoint();
 	
 	
-	//-------------- FMC USER INTERFACE ------------------------------------------------------
-	fmc.ui.modal = 
-	$('<div>')
-	.addClass('modal hide gefs-stopPropagation')
-	.attr('data-backdrop', 'static')
-	.attr('id', 'fmcModal')
-	.attr('tabindex', '-1')
-	.attr('role', 'dialog')
-	.attr('aria-labelledby', 'fmcDialogBoxLabel')
-	.attr('aria-hidden', 'true')
-	.css('width', '590px')
-	.append(
-
-	// Dialog
-	$('<div>')
-		.addClass('modal-dialog')
-		.append(
-
-		// Content
-		$('<div>')
-			.addClass('modal-content')
-			.append(
-
-			// Header
-			$('<div>')
-				.addClass('modal-header')
-				.append(
-				$('<button>')
-					.addClass('close')
-					.attr('type', 'button')
-					.attr('data-dismiss', 'modal')
-					.attr('aria-hidden', 'true')
-					.text('\xD7') // &times;
-			,	$('<h3>')
-					.addClass('modal-title')
-					.attr('id', 'myModalLabel')
-					.css('text-align', 'center')
-					.text('Flight Management Computer')
-				)
-
-			// Body
-		,	$('<div>')
-				.addClass('modal-body')
-				.append(
-
-				// Navigation tabs
-				$('<ul>')
-					.addClass('nav nav-tabs')
-					.append(
-						$('<li>')
-							.addClass('active')
-							.append('<a href="#rte" data-toggle="tab">RTE</a>')
-					,	$('<li>')
-							.append('<a href="#arr" data-toggle="tab">DEP/ARR</a>')
-					/*,	$('<li>')
-							.append('<a href="#perf" data-toggle="tab">PERF</a>')*/
-					,	$('<li>')
-							.append('<a href="#vnav" data-toggle="tab">VNAV</a>')
-					,	$('<li>')
-							.append('<a href="#prog" data-toggle="tab">PROG</a>')
-					,	$('<li>')
-							.append('<a href="#load" data-toggle="tab">LOAD</a>')
-					/*,	$('<li>')
-							.append('<a href-"#save" data-toggle="tab">SAVE</a>')*/
-					,	$('<li>')
-							.append('<a href="#log" data-toggle="tab">LOG</a>')
-					)
-
-				// Tab Content
-			,	$('<div>')
-					.addClass('tab-content')
-					.css('padding', '5px')
-					.append(
-
-					// ROUTE TAB
-					$('<div>')
-						.addClass('tab-pane active')
-						.attr('id', 'rte')
-						.append(
-						$('<table>')
-							.append(
-							$('<tr>')
-								.append(
-								$('<table>')
-									.append(
-									$('<tr>')
-										.append(
-			
-										// Departure Airport input
-										$('<td>')
-											.css('padding', '5px')
-											.append(
-											$('<div>')
-												.addClass('input-prepend input-append')
-												.append(
-												$('<span>')
-													.addClass('add-on')
-													.text('Departure')
-											,	$('<input>')
-													.addClass('input-mini')
-													.attr('id','departureInput')
-													.attr('type', 'text')
-													.attr('placeholder', 'ICAO')
-												)
-											)
-		
-										// Arrival Airport input
-									,	$('<td>')
-											.css('padding', '5px')
-											.append(
-											$('<div>')
-												.addClass('input-prepend input-append')
-												.append(
-												$('<span>')
-													.addClass('add-on')
-													.text('Arrival')
-											,	$('<input>')
-													.addClass('input-mini')
-													.attr('type', 'text')
-													.attr('id','arrivalInput')
-													.attr('placeholder', 'ICAO')
-													.change(function() {
-														var wpt = $(this).val();
-														var coords = fmc.waypoints.getCoords(wpt);
-														if (!coords) {
-															alert('Invalid Airport code');
-															$(this).val('');
-														}
-														else arrival = [wpt, coords[0], coords[1]];
-													})
-												)
-											)
-			
-										// Flight # input
-									,	$('<td>')
-											.css('padding', '5px')
-											.append(
-											$('<div>')
-												.addClass('input-prepend input-append')
-												.append(
-												$('<span>')
-													.addClass('add-on')
-													.text('Flight #'), $('<input>')
-													.addClass('input-mini')
-													.attr('id', 'flightNumInput')
-													.css('width', '80px')
-													.attr('type', 'text')
-												)
-											)
-										)
-									)
-								)
-							
-							// Waypoints list labels
-						,	$('<tr>')
-								.append(
-								$('<table>')
-									.attr('id','waypoints')
-									.append( 
-									$('<tr>')
-										.append(
-										$('<td>').append('<th>Waypoints</th>')
-									,	$('<td>').append('<th>Position</th>')
-									,	$('<td>').append('<th>Altitude</th>')
-									,	$('<td>').append('<th>Actions</th>')
-										)
-									)
-								)
-								
-							// Add Waypoint
-						,	$('<tr>')
-								.append(
-								$('<div>')
-									.attr('id','waypointsAddDel')
-									.append(
-									$('<table>')
-										.append(
-										$('<tr>')
-											.append(
-											$('<td>')
-												.append(
-												$('<button>')
-													.addClass('btn btn-primary')
-													.attr('type', 'button')
-													.text('Add Waypoint ')
-													.append( $('<i>').addClass('icon-plus'))
-													.click(function() {
-														fmc.waypoints.addWaypoint();
-													})
-													.css('margin-right', '3px')
-												)
-											)
-										)
-									)
-								)
-								
-							// Save Route	
-						,	$('<tr>')
-								.append(
-								$('<div>')
-									.attr('id','saveRoute')
-									.append(
-									$('<table>')
-										.append(
-										$('<tr>')
-											.append(
-											$('<td>')
-												.append(
-												$('<button>')
-													.addClass('btn btn-info')
-													.attr('type', 'button')
-													.text('Save Route ')
-													.append( $('<i>').addClass('icon-file icon-white'))
-													.click(function() {
-														fmc.waypoints.saveData();
-													})
-													.css('margin-right', '3px')
-											,	$('<button>')
-													.addClass('btn btn-info')
-													.attr('type', 'button')
-													.text('Retrieve Route ')
-													.append( $('<i>').addClass('icon-refresh icon-white'))
-													.click(function() {
-														fmc.waypoints.loadFromSave();
-													})
-												)
-											)
-										)
-									)
-								)
-							)
-						)
-						
-					// ARRIVAL TAB
-				,	$('<div>')
-						.addClass('tab-pane')
-						.attr('id', 'arr')
-						.append(
-						$('<table>')
-							.append(
-							$('<tr>')
-								.append(
-								$('<td>')
-									.append(
-									$('<div>')
-										.addClass('input-prepend input-append')
-										.append(
-										$('<span>')
-											.addClass('add-on')
-											.text('TOD Dist.')
-									,	$('<input>')
-											.attr('id', 'todInput')
-											.attr('type', 'number')
-											.attr('min', '0')
-											.attr('placeholder', 'nm')
-											.css('width', '38px')
-											.change(function() {
-												tod = $(this).val();
-											})
-										)
-									)
-							,	$('<td>')
-									.append(
-									$('<div>')
-										.addClass('input-prepend input-append')
-										.append(
-										$('<span>')
-											.addClass('add-on')
-											.text('Automatically calculate TOD')
-									,	$('<button>')
-											.addClass('btn btn-standard')
-											.attr('type', 'button')
-											.text('OFF')
-											.click(function() {
-												if (!todCalc) {
-													$(this).removeClass('btn btn-standard').addClass('btn btn-warning').text('ON');
-													todCalc = true;
-												} else {
-													$(this).removeClass('btn btn-warning').addClass('btn btn-standard').text('OFF');
-													todCalc = false;
-												}
-											})
-										)
-									)
-								)
-						,	$('<tr>')
-								.append(
-								$('<td>')
-									.append(
-									$('<div>')
-										.addClass('input-prepend input-append')
-										.append(
-										$('<span>')
-											.addClass('add-on')
-											.text('Arrival Field Elev.')
-									,	$('<input>')
-											.attr('type','number')
-											.attr('placeholder','ft.')
-											.css('width','55px')
-											.change(function() {
-												fieldElev = Number($(this).val());
-											})
-										)
-									)
-								)
-							)
-						)
-
-					// VNAV tab
-				,	$('<div>')
-						.addClass('tab-pane')
-						.attr('id','vnav')
-						.append(
-							
-						// AUTO-CLIMB/DESCENT, CRUISE ALT ROW, PHASE, TOGGLE
-						$('<table>')
-							.append(
-							$('<tr>')
-								.append(
-								$('<td>')
-									.append(
-									$('<div>')
-    								.addClass('input-prepend input-append')
-   							 		.append(
-        						 		$('<button>')
-        									.addClass('btn')
-        									.attr('id', 'vnavButton')
-        									.text('VNAV ')
-        									.append($('<i>').addClass('icon icon-resize-vertical'))
-        									.click(function () {
-        										toggleVNAV();
-        									})
-									, 	$('<span>')
-        									.addClass('add-on')
-        									.text('Cruise Alt.')
-									, 	$('<input>')
-        									.attr('type', 'number')
-        									.attr('step', '100')
-        									.attr('min', '0')
-        									.attr('max', '100000')
-        									.attr('placeholder', 'ft')
-        									.css('width', '80px')
-        									.change(function () {
-            									cruise = Number( $(this).val());
-            									console.log("Cruise Alt set to " + cruise + " ft.");
-        									})
-    									)
-									)
-								)	
-						,	$('<tr>')
-								.append(
-								
-								// Flight Phase
-								$('<td>')
-									.append(
-									$('<div>')
-										.addClass('input-prepend input-append')
-										.append(
-										$('<span>')
-											.addClass('add-on')
-											.text('Phase')
-									,	$('<button>')
-											.addClass('btn btn-info')
-											.attr('id', 'phaseBtn')
-											.text('Climb')
-											.css('height', '30px')
-											.css('width', '77px')
-											.click(function() {
-												if ( $('#phaseLock').hasClass('btn-default')) {
-													if (phase == "climb") {
-														$(this).text("Cruise");
-														phase = "cruise";
-													} else if (phase == "cruise") {
-														$(this).text("Descent");
-														phase = "descent";
-													} else {
-														$(this).text("Climb");
-														phase = "climb";
-													}
-													console.log("Phase set to " + phase)
-												}
-											})
-									,	$('<button>')
-											.addClass('btn btn-default')
-											.attr('id', 'phaseLock')
-											.append($('<i class="icon-lock"></i>'))
-											.click(function() {
-												if ($(this).hasClass('btn-default')) {
-													$(this).removeClass('btn-default').addClass('btn-danger');
-													console.log('Flight phase locked');
-												} else {
-													$(this).removeClass('btn-danger').addClass('btn-default');
-													console.log('Flight phase unlocked');
-												}
-											})
-										)	
-									)
-								
-								// SPD Toggle Button
-							,	$('<td>')
-									.append(
-									$('<div>')
-										.addClass('input-prepend input-append')
-										.append(
-												$('<span>')
-													.addClass('add-on')
-													.text('SPD Control')
-											,	$('<button>')
-													.addClass('btn btn-warning')
-													.attr('id', 'tSpd')
-													.text('ON')
-													.css('width', '60px')
-													.click(function() {toggleSpeed();})
-											)
-									)
-								)
-							)		
-						)
-					
-					// Progress tab
-				,	$('<div>')
-						.addClass('tab-pane')
-						.attr('id','prog')
-						.append(
-						$('<table>')
-							.append(
-							$('<tr>')
-								.append(
-								$('<td>')
-									.append(
-									$('<div>')
-										.addClass('input-prepend input-append')
-										.append(
-										$('<span>')
-											.addClass('add-on')
-											.text('Dest')
-									,	$('<span>')
-											.addClass('add-on')
-											.css('background-color', 'white')
-											.css('width', '53px')
-											.append( $('<div>').attr('id', 'flightdist'))
-									,	$('<span>')
-											.addClass('add-on')
-											.css('background-color', 'white')
-											.css('width', '50px')
-											.append(
-											$('<table>')
-												.css({'position': 'relative', 'top': '-6px'})
-												.append(
-												$('<tr>')
-													.append(
-													$('<td>')
-														.append(
-														$('<div>')
-															.attr('id', 'flightete')
-															.css('font-size', '70%')
-															.css('height', '10px')
-														)
-													)
-											,	$('<tr>')
-													.append(
-													$('<td>')
-														.append(
-														$('<div>')
-															.attr('id', 'flighteta')
-															.css('font-size', '70%')
-															.css('height', '10px')
-														)
-													)
-												)
-											)
-										)
-									)
-							,	$('<td>')
-									.append(
-									$('<div>')
-										.addClass('input-prepend input-append')
-										.append(
-										$('<span>')
-											.addClass('add-on')
-											.text('TOD')
-									,	$('<span>')
-											.addClass('add-on')
-											.css('background-color', 'white')
-											.css('width', '53px')
-											.append( $('<div>').attr('id', 'toddist'))
-									,	$('<span>')
-											.addClass('add-on')
-											.css('background-color', 'white')
-											.css('width', '50px')
-											.append(
-											$('<table>')
-												.css({'position': 'relative', 'top': '-6px'})
-												.append(
-												$('<tr>')
-													.append( 
-													$('<td>')
-														.append( $
-														('<div>')
-															.attr('id', 'todete')
-															.css('font-size', '70%')
-															.css('height', '10px')
-														)
-													)
-											,	$('<tr>')
-													.append(
-													$('<td>')
-														.append(
-														$('<div>')
-															.attr('id', 'todeta')
-															.css('font-size', '70%')
-															.css('height', '10px')
-														)
-													)
-												)
-											)
-										)
-									)
-								)
-						,	$('<tr>')
-								.append(
-								$('<td>')
-									.append(
-									$('<div>')
-										.addClass('input-prepend input-append')
-										.append( 
-										$('<span>')
-											.addClass('add-on')
-											.text('Next Waypoint ')
-											.append( $('<i>').addClass('icon-map-marker'))
-									,	$('<span>')
-											.addClass('add-on')
-											.css('background-color', 'white')
-											.css('width', '53px')
-											.append( $('<div>').attr('id', 'nextDist'))
-									,	$('<span>')
-											.addClass('add-on')
-											.css('background-color', 'white')
-											.css('width', '53px')
-											.append( $('<div>').attr('id', 'nextETE'))
-										)
-									)
-								)
-							)
-						)
-				
-					// LOAD TAB
-				,	$('<div>')
-						.addClass('tab-pane')
-						.attr('id', 'load')
-						.append(
-						$('<th>Enter waypoints seperated by spaces or a generated route</th>'),
-						$('<form>')
-							.attr('action','javascript:fmc.waypoints.toRoute(fmc.waypoints.input);')
-							.addClass('form-horizontal')
-							.append(
-							$('<fieldset>')
-								.append(
-								$('<div>')
-									.addClass('input-prepend input-append')
-									.append(
-									$('<span>')
-										.addClass('add-on')
-										.text('Waypoints ')
-										.append( $('<i>').addClass('icon-pencil'))
-								,	$('<input>')
-										.attr('type', 'text')
-										.addClass('input-xlarge gefs-stopPropagation')
-										.change(function() {
-											fmc.waypoints.input = $(this).val();
-										})
-									)
-							,	$('<label class = "checkbox"><input type="checkbox" id="wptDeparture" value="true" checked> First waypoint is departure airport</label>')
-							,	$('<label class = "checkbox"><input type="checkbox" id="wptArrival" value="true" checked> Last waypoint is arrival airport</label>')
-							,	$('<button>')
-									.attr('type', 'submit')
-									.addClass('btn btn-primary')
-									.text('Load Route ')
-									.append( $('<i>').addClass('icon-play'))
-								)
-								
-							// Share route / generate route	
-						,	$('<fieldset>')
-								.css('margin-top', '10px')
-								.append(
-									$('<button>')
-									.addClass('btn btn-warning')
-									.attr('type','button')
-									.text('Generate')
-									.click(function() {
-										$('#generateRoute').val(fmc.waypoints.toRouteString()).change();
-									}), 
-									$('<button>')
-									.addClass('btn btn-warning')
-									.attr('type','button')
-									.css('margin-left', '5px')
-									.text('Clear')
-									.click(function() {
-										$('#generateRoute').val("").change();
-									}),
-									$('<div>').css('margin-top', '10px').append(
-										$('<textarea>')
-										.attr('id', 'generateRoute')
-										.attr('placeholder', 'Generate route. Save it or share it')
-										.css('margin', '0px 0px 10px')
-										.css('width', '350px')
-										.css('height', '65px')
-										.css('resize', 'none')
-									)
-								)
-							)
-						)
-						
-					// Log tab
-				,	$('<div>')
-						.addClass('tab-pane')
-						.attr('id','log')
-						.append(
-						$('<table>')
-							.attr('id','logData')
-							.append(
-							$('<tr>')
-								.append(
-								$('<th>Time</th>')
-									.css('padding','0px 10px 0px 10px')
-							,	$('<th>Speed</th>')
-									.css('padding','0px 10px 0px 10px')
-							,	$('<th>Heading</th>')
-									.css('padding','0px 10px 0px 10px')
-							,	$('<th>Altitude</th>')
-									.css('padding','0px 10px 0px 10px')
-							,	$('<th>Lat.</th>')
-									.css('padding','0px 10px 0px 10px')
-							,	$('<th>Lon.</th>')
-									.css('padding','0px 10px 0px 10px')
-							,	$('<th>FPS</th>')
-									.css('padding','0px 10px 0px 10px')
-							,	$('<th>Other</th>')
-									.css('padding','0px 10px 0px 10px')
-								)
-							)
-					,	$('<button>')
-							.addClass('btn btn-danger')
-							.attr('type','button')
-							.click(function() {
-								removeLogData();
-							})
-							.text('Clear Log ')
-							.append( $('<i>').addClass('icon-remove-circle'))
-						)
-					)
-				)
-			
-			// Footer
-		,	$('<div>')
-				.addClass('modal-footer')
-				.append(
-				$('<button>')
-					.addClass('btn btn-default')
-					.attr('type', 'button')
-					.attr('data-dismiss', 'modal')
-					.text('Close')
-			,	$('<button>')
-					.addClass('btn btn-primary')
-					.attr('type', 'button')
-					.text('Save changes ')
-					.append( $('<i>').addClass('icon-hdd'))
-				)
-			)
-		)
-	).appendTo('body');
+	
+	//-------------- Modal Debug -------------------------------------------------------------
 
 	// Hides backdrop for the modal	
 	$('#fmcModal').modal({
 		backdrop: false,
 		show: false
 	});
-
-	// Initializes to 1 waypoint input field on load
-	fmc.waypoints.addWaypoint();
 
 	// Stops immediate keyup actions in the FMC Modal
 	$('#fmcModal').keyup(function (event) {
