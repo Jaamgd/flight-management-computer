@@ -273,7 +273,7 @@
 					alert("Invalid Waypoints Input");
 				}
 			} else {
-				fmc.waypoints.loadFromSave(url);
+				fmc.waypoints.loadFromSave(s);
 			}
 		},
 		
