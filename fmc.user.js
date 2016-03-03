@@ -29,6 +29,22 @@
 	var phase = "climb";
 	var todCalc = false;
 	var fieldElev = 0;
+	var DEFAULT_PROFILE = {
+		"climb": [
+			[1500, 4000, 210, 3000],
+			[4000, 10000, 250, 2500],
+			[10000, 18000, 295, 2200],
+			[18000, 27000, 295, 1800],
+			[27000, 30000, 295, 1500],
+			[30000, 1e99, 0.78, 1500]
+		],
+		"descent": [
+			[30000, 1e99, 0.78, -2300],
+			[18000, 30000, 295, -2100],
+			[12000, 18000, 280, -1800],
+			[10000, 12000, 250, -1500]
+		]
+	};
 
 	// Global variables/constants
 	window.feetToNM = 1 / 6076;
@@ -523,7 +539,7 @@
 	};
 
 	fmc.vnav = {
-		profile: {}
+		profile: gefs.aircraft.setup.fmc || DEFAULT_PROFILE
 	}
 	
 	fmc.ui = {
@@ -1384,33 +1400,6 @@
 	}
 
 	/**
-	 * Updates plane's clibm profile, set on a timer
-	 */
-	var profileTimer = setInterval(function() {
-		if (gefs.aircraft.setup.fmc) {
-			fmc.vnav.profile = gefs.aircraft.setup.fmc;
-			clearInterval(profileTimer);
-		} else {
-			fmc.vnav.profile = {
-				"climb": [
-					[1500, 4000, 210, 3000],
-					[4000, 10000, 250, 2500],
-					[10000, 18000, 295, 2200],
-					[18000, 27000, 295, 1800],
-					[27000, 30000, 295, 1500],
-					[30000, 1e99, 0.78, 1500]
-				],
-				"descent": [
-					[30000, 1e99, 0.78, -2300],
-					[18000, 30000, 295, -2100],
-					[12000, 18000, 280, -1800],
-					[10000, 12000, 250, -1500]
-				]
-			}
-		}
-	}, 5000);
-	
-	/**
 	 * Updates plane's flight log, set on a timer
 	 *
 	 * @param [optional]{String} other Updates the log with other as extra info
@@ -1845,25 +1834,7 @@
 		var timer = setInterval(function () {
 			if (oldParts !== gefs.aircraft.object3d._children) {
 				clearInterval(timer);
-				if (gefs.aircraft.setup.fmc) fmc.vnav.profile = gefs.aircraft.setup.fmc;
-				else {
-					fmc.vnav.profile = {
-						"climb": [
-							[1500, 4000, 210, 3000],
-							[4000, 10000, 250, 2500],
-							[10000, 18000, 295, 2200],
-							[18000, 27000, 295, 1800],
-							[27000, 30000, 295, 1500],
-							[30000, 1e99, 0.78, 1500]
-						],
-						"descent": [
-							[30000, 1e99, 0.78, -2300],
-							[18000, 30000, 295, -2100],
-							[12000, 18000, 280, -1800],
-							[10000, 12000, 250, -1500]
-						]
-					}
-				}
+				fmc.vnav.profile = gefs.aircraft.setup.fmc || DEFAULT_PROFILE;
 			}
 		}, 16);
 	};
